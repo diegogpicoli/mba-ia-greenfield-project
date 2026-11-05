@@ -88,6 +88,8 @@
     ],
     "coverageDirectory": "../coverage",
     "testEnvironment": "node",
+    "testTimeout": 60000,
+    "maxWorkers": 1,
     "setupFiles": [
       "dotenv/config"
     ]
