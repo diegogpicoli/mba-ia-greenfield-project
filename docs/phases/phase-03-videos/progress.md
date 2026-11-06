@@ -1,7 +1,7 @@
 # phase-03-videos — Progress
 
 **Status:** in_progress
-**SIs:** 4/17 completed
+**SIs:** 5/17 completed
 
 ### SI-03.1 — Infra: Redis, MinIO e FFmpeg no Compose
 - **Status:** completed
@@ -41,9 +41,17 @@
   - Não provados: a expiração real das URLs, já que os testes conferem `X-Amz-Expires` e `expiresAt` sem esperar o prazo; e o `PUT` a partir de um navegador, que depende de CORS e fica para a fase com tela. `PUT` e `GET` com `Range` em URLs assinadas para `localhost:9000` foram conferidos com `curl` a partir do host.
 
 ### SI-03.5 — Infra: worker em processo próprio
-- **Status:** pending
-- **Tests:** no tests
-- **Observations:** none
+- **Status:** completed
+- **Tests:** 1 passing
+- **Observations:**
+  - **Para a documentação da SI-03.17:** mudança no código do worker exige `docker compose restart video-worker`. O bind mount é `9p`, e nele nem `fs.watch` nem `nest start --watch` perceberam edição, feita no host ou dentro do container, mesmo com o compilador já em "Watching for file changes". O `start:dev` da API usa o mesmo mount, então deve ter a mesma limitação; isso não foi medido na API.
+  - `start:worker` não usa `--watch`. Além de não recarregar, o CLI do Nest continua vivo quando o processo do worker morre, e o container nunca sairia para o `restart: unless-stopped` agir. O script compila e faz `exec node dist-worker/worker`, e o `command` faz `exec npm run start:worker`, então a morte do worker encerra o container.
+  - O `video-worker` recebe `env_file` com `.env.example` e `.env` opcional, que prevalece. O plano não previa isso: um clone novo não tem `.env`, e a validação Joi exige as chaves. O `nestjs-api` segue dependendo de um `.env` para subir a aplicação.
+  - Tempos medidos: primeira subida com `npm install` em volume vazio, de 1 a 2 min; clone novo com imagens em cache, 85 s; volta após a morte do processo, 38 s. Compilar o worker leva cerca de 30 s com o `node_modules` em volume, contra mais de 6 min com o `node_modules` no bind mount. O tempo com imagens construídas do zero não foi medido.
+  - `docker compose stop video-worker` termina em 2 s, com `npm error signal SIGTERM` no log e código de saída 1. Isso é o `npm` relatando o sinal, e não uma falha do worker.
+  - `dist-worker` saiu de `tsconfig.json` e `tsconfig.build.json`, para os `.d.ts` do worker não entrarem nas compilações da API. `tsconfig.worker.json` inclui só `src/worker.ts` e o que ele importa.
+  - `src/worker.module.spec.ts` abre conexão real com `db` e `redis` ao compilar, como `channels.module.spec.ts`, porque o `TypeOrmModule.forRootAsync` conecta na compilação do módulo. O `close()` do Nest não dispara `onModuleInit`, então o teste não sobe consumidor.
+  - Não provados: o consumo de jobs e a recuperação de job travado após a queda, porque o processor só chega na SI-03.7. O serviço ainda só registra a fila.
 
 ### SI-03.6 — Extração de metadados e thumbnail com FFmpeg
 - **Status:** pending

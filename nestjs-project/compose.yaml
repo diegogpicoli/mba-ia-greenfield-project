@@ -17,6 +17,27 @@ services:
       minio:
         condition: service_healthy
 
+  video-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    command: sh -c "npm install && exec npm run start:worker"
+    restart: unless-stopped
+    env_file:
+      - path: .env.example
+      - path: .env
+        required: false
+    volumes:
+      - .:/home/node/app
+      - video-worker-node-modules:/home/node/app/node_modules
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+
   db:
     image: postgres:17
     ports:
@@ -68,3 +89,4 @@ services:
 volumes:
   redis-data:
   minio-data:
+  video-worker-node-modules:
