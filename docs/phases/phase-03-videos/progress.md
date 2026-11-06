@@ -1,7 +1,7 @@
 # phase-03-videos — Progress
 
 **Status:** in_progress
-**SIs:** 1/17 completed
+**SIs:** 2/17 completed
 
 ### SI-03.1 — Infra: Redis, MinIO e FFmpeg no Compose
 - **Status:** completed
@@ -13,9 +13,12 @@
   - Apareceu `nestjs-project/nul`, arquivo vazio e não versionado, durante a verificação desta SI, sem origem identificada. Foi removido antes do commit.
 
 ### SI-03.2 — Infra: dependências, configs `queue` e `storage`, schema Joi e `.env.example`
-- **Status:** pending
-- **Tests:** no tests
-- **Observations:** none
+- **Status:** completed
+- **Tests:** 17 passing
+- **Observations:**
+  - As nove chaves são obrigatórias sem default, então um `.env` local antigo impede a aplicação de subir até receber as chaves do `.env.example`. O `.env` desta máquina já foi atualizado, e ele não é versionado.
+  - A prova de boot leva de 40 a 85 s, porque carregar os módulos pelo bind mount do Windows é lento. Uma primeira tentativa com `timeout 25` foi inconclusiva: o processo morreu antes de validar o schema. Prazos curtos em comandos no container podem dar falso resultado nas próximas SIs.
+  - `npm audit` aponta 65 vulnerabilidades (3 críticas). Nenhuma das cinco libs novas aparece pelo nome como pacote afetado; dependências transitivas não foram analisadas, e a correção está fora do escopo desta SI.
 
 ### SI-03.3 — Entidade `Video` e migration `CreateVideos`
 - **Status:** pending
