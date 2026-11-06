@@ -1,7 +1,7 @@
 # phase-03-videos — Progress
 
 **Status:** in_progress
-**SIs:** 6/18 completed
+**SIs:** 7/18 completed
 
 ### SI-03.1 — Infra: Redis, MinIO e FFmpeg no Compose
 - **Status:** completed
@@ -127,7 +127,9 @@
 - **Observations:** none
 
 ### SI-03.18 (amendment of SI-03.5) — `env_file` no `video-worker` e `start:worker` sem `--watch`
-- **Status:** pending
+- **Status:** completed
 - **Tests:** no tests
 - **Observations:**
-  - Registra no plano a revisão de 2026-11-06 do `phase-03-videos/TD-05`. O código já existe, então a SI fecha reconferindo as provas de clone novo e de reinício do container.
+  - Registra no plano a revisão de 2026-11-06 do `phase-03-videos/TD-05`, sem mudança de código.
+  - Clone novo em `86a3beb`, sem `.env`, `node_modules` nem `dist`: `docker compose up -d` deixou o `video-worker` com o contexto iniciado em 3 min 48 s, dos quais 3 min de `npm install`, com `RestartCount` 0 e sem nenhum `docker compose exec`. `S3_BUCKET_VIDEOS` veio do `env_file`, e o `.env` continuou ausente. As imagens estavam em cache, então o tempo com imagens construídas do zero segue sem medição.
+  - `pkill -9` em `node dist-worker/worker`, no stack principal: `RestartCount` foi de 0 para 1, e o contexto voltou em 25 s.
