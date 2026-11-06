@@ -89,8 +89,8 @@ Entregar o upload de vídeos de até 10GB sem impacto na performance, com pré-c
 1. Criar `src/videos/entities/video.entity.ts` com a entidade `Video` e o enum `VideoStatus`, conforme `### Data Model`. `declared_size` e `bitrate` usam transformer de `bigint` para `number`, porque o TypeORM devolve `bigint` como texto e o contrato diz integer (per `phase-03-videos/TD-09`)
 2. Acrescentar `Channel.videos` (`@OneToMany`) e incluir `Video` nas listas de entidades das 11 specs que já listam `Channel`, porque o TypeORM não resolve a relação sem a entidade na lista
 3. Gerar `src/database/migrations/<timestamp>-CreateVideos.ts` com `npm run migration:generate`, dentro do container, e revisar enum, FK, `UNIQUE` e `down()`
-4. Em `src/test/create-test-data-source.ts`, fazer `cleanAllTables` apagar `videos` antes de `channels`
-5. Em `src/database/migrations.integration-spec.ts`, acrescentar `videos` a `MANAGED_TABLES`, a migration nova à lista e à contagem, o `DROP TYPE` de `videos_status_enum` e ajustar o teste de reversão, porque a última migration passa a ser `CreateVideos`
+4. Em `src/test/create-test-data-source.ts`, fazer `cleanAllTables` apagar `videos` antes de `channels`; em `src/database/migrations.integration-spec.ts`, acrescentar `videos` a `MANAGED_TABLES`, a migration nova à lista e à contagem, o `DROP TYPE` de `videos_status_enum` e ajustar o teste de reversão, porque a última migration passa a ser `CreateVideos`
+5. Criar `src/videos/videos.module.ts` só com `TypeOrmModule.forFeature([Video])` e importá-lo em `AppModule`, porque `AppModule` usa `autoLoadEntities` e não resolve `Channel.videos` sem `Video` registrada
 
 **Tests:**
 
@@ -98,6 +98,7 @@ Entregar o upload de vídeos de até 10GB sem impacto na performance, com pré-c
 |----------|-------|-----------|
 | `Video` | Integration: `public_id` único, default `draft`, valor inválido de `status`, FK de `channel_id`, `bigint` lido como `number` | `src/videos/entities/video.entity.integration-spec.ts` |
 | Migrations | Integration: aplica as três migrations e reverte `CreateVideos` | `src/database/migrations.integration-spec.ts` |
+| `AppModule` | E2E: sobe com a relação `Channel.videos` | `test/app.e2e-spec.ts` |
 
 **Dependencies:** none
 
@@ -109,6 +110,7 @@ Entregar o upload de vídeos de até 10GB sem impacto na performance, com pré-c
 - Inserir um vídeo com `channel_id` inexistente — violação de FK
 - Gravar `declared_size` igual a 10737418240 — a leitura pela entidade devolve o `number` 10737418240
 - `npm run migration:run` cria a tabela `videos`, e `npm run migration:revert` remove a tabela e o tipo `videos_status_enum`
+- `AppModule` sobe com a relação `Channel.videos`, provado por `test/app.e2e-spec.ts`
 
 ---
 
@@ -282,7 +284,7 @@ Entregar o upload de vídeos de até 10GB sem impacto na performance, com pré-c
 2. Criar `src/videos/dto/create-video.dto.ts`, os DTOs de resposta e `VideoTooLargeException` (`VIDEO_TOO_LARGE`), conforme `### API Contracts → POST /videos`
 3. Criar `src/videos/videos.service.ts` com `createDraft`, seguindo o `**Behavior:**` do contrato, inclusive a nova tentativa em colisão `23505` no mesmo padrão de `ChannelsService` (per `phase-03-videos/TD-02`, `phase-03-videos/TD-07`)
 4. Criar `src/videos/videos.controller.ts` com `@Post()`, `@ApiBearerAuth('access-token')`, `@ApiOperation` e `@ApiResponse` com `ApiErrorEnvelope` para cada erro (per `openapi-docs-nestjs/TD-01`, `phase-02-auth/TD-07`)
-5. Criar `src/videos/videos.module.ts`, com `TypeOrmModule.forFeature([Video])`, `ChannelsModule` e `StorageModule`, e registrá-lo em `AppModule`
+5. Ampliar `src/videos/videos.module.ts`, criado na SI-03.3, com `ChannelsModule` e `StorageModule`
 
 **Tests:**
 
