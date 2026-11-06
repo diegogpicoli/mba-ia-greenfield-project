@@ -283,7 +283,7 @@ Entregar o upload de vídeos de até 10GB sem impacto na performance, com pré-c
 1. Criar `ChannelsService.findByUserId`, porque buscar o canal é responsabilidade de `ChannelsModule`
 2. Criar `src/videos/dto/create-video.dto.ts`, os DTOs de resposta e `VideoTooLargeException` (`VIDEO_TOO_LARGE`), conforme `### API Contracts → POST /videos`
 3. Criar `src/videos/videos.service.ts` com `createDraft`, seguindo o `**Behavior:**` do contrato, inclusive a nova tentativa em colisão `23505` no mesmo padrão de `ChannelsService` (per `phase-03-videos/TD-02`, `phase-03-videos/TD-07`)
-4. Criar `src/videos/videos.controller.ts` com `@Post()`, `@ApiBearerAuth('access-token')`, `@ApiOperation` e `@ApiResponse` com `ApiErrorEnvelope` para cada erro (per `openapi-docs-nestjs/TD-01`, `phase-02-auth/TD-07`)
+4. Criar `src/videos/videos.controller.ts` com `@SkipThrottle()` na classe (per `phase-02-auth/TD-08`), `@Post()`, `@ApiBearerAuth('access-token')`, `@ApiOperation` e `@ApiResponse` com `ApiErrorEnvelope` para cada erro (per `openapi-docs-nestjs/TD-01`, `phase-02-auth/TD-07`)
 5. Ampliar `src/videos/videos.module.ts`, criado na SI-03.3, com `ChannelsModule` e `StorageModule`
 
 **Tests:**
@@ -339,6 +339,7 @@ Entregar o upload de vídeos de até 10GB sem impacto na performance, com pré-c
 - `GET /videos/{publicId}` de outro usuário retorna `404` com `error: "VIDEO_NOT_FOUND"`, igual à resposta de um `public_id` inexistente
 - `GET /videos/{publicId}` sem token retorna `401`
 - A resposta não traz `id`, `channel_id`, `upload_id` nem `source_key`
+- Mais de 10 `GET /videos/{publicId}` em um minuto não recebem `429`
 
 ---
 

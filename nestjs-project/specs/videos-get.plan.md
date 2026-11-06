@@ -64,3 +64,13 @@ target_file: test/videos-get.e2e-spec.ts
 **Steps:**
   1. GET /videos/{publicId} sem o header `Authorization`
     - expect: status 401
+
+#### 1.5. nao-limita-polling-de-status
+
+**Covers AC:** #6
+**Source:** auto
+**Last sync:** 2026-11-06T14:12:23Z
+
+**Steps:**
+  1. GET /videos/{publicId} com o token do dono, mais de 10 vezes dentro de um minuto
+    - expect: nenhuma resposta 429

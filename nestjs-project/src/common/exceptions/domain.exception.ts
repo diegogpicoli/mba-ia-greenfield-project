@@ -48,3 +48,9 @@ export class TokenReuseDetectedException extends DomainException {
     );
   }
 }
+
+export class UploadNotFoundException extends DomainException {
+  constructor() {
+    super('UPLOAD_NOT_FOUND', 409, 'Multipart upload not found');
+  }
+}

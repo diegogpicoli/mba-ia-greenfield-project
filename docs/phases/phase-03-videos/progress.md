@@ -1,7 +1,7 @@
 # phase-03-videos — Progress
 
 **Status:** in_progress
-**SIs:** 3/17 completed
+**SIs:** 4/17 completed
 
 ### SI-03.1 — Infra: Redis, MinIO e FFmpeg no Compose
 - **Status:** completed
@@ -10,7 +10,6 @@
   - Versões em execução: Redis 8.8.4 e FFmpeg 5.1.9, do apt do Debian 12 da imagem `node:25.6.0-slim`. É uma versão de 2022 em diante; `library-refs.md` usa a documentação atual do site, então as próximas SIs devem conferir as opções nesta versão.
   - `minio --version` responde `DEVELOPMENT.GOGET`, porque `go install` não grava a versão. O commit foi provado pelos metadados do binário: `go version -m` mostra `github.com/minio/minio v0.0.0-20251015172955-9e49d5e7a648`.
   - O efeito de `MINIO_API_STALE_UPLOADS_EXPIRY=168h` não foi provado: o valor chega ao container e os logs não têm erro, mas a expiração em 7 dias não é observável aqui.
-  - Apareceu `nestjs-project/nul`, arquivo vazio e não versionado, durante a verificação desta SI, sem origem identificada. Foi removido antes do commit.
 
 ### SI-03.2 — Infra: dependências, configs `queue` e `storage`, schema Joi e `.env.example`
 - **Status:** completed
@@ -25,14 +24,21 @@
 - **Tests:** 17 passing (16 da SI + 1 e2e de `AppModule`); as 10 specs em que `Video` entrou na lista de entidades também passam (79 testes em 12 suítes, antes de criar o módulo)
 - **Observations:**
   - **Mudança no plano:** o `VideosModule` mínimo foi criado nesta SI, e não na SI-03.9. Motivo: com `Channel.videos` e `autoLoadEntities`, o `AppModule` falhava com `Entity metadata for Channel#videos was not found` até alguém registrar `Video`, o que deixaria aplicação e e2e quebrados da SI-03.3 à SI-03.8. `.claude/rules/nestjs-modules.md` manda registrar toda entidade no módulo dono, e a ordem do plano estava errada. A SI-03.3 ganhou a ação e o critério de aceite, juntando os ajustes de teste em uma ação para manter o limite de 5, e a ação 5 da SI-03.9 passou a ampliar o módulo.
-  - A edição manual do plano o deixa mais novo que as specs. Um aviso de spec STALE no preflight do `/implement` por causa dela é falso positivo: as specs não mudaram.
   - A spec de migrations agora tem dois testes de reversão, de `CreateVideos` e de `CreateAuthTokens`, para não perder a cobertura que já existia.
   - Avisos do Node durante os testes, sem falha: `--localstorage-file` e o deprecation de `client.query()` do `pg`.
 
 ### SI-03.4 — Serviço de storage: multipart, assinatura e buckets
-- **Status:** pending
-- **Tests:** no tests
-- **Observations:** none
+- **Status:** completed
+- **Tests:** 14 passing (13 de integração contra o MinIO real + 1 de compilação do módulo)
+- **Observations:**
+  - `ListParts` difere da AWS: sem `max-parts`, o MinIO devolveu 1001 partes em uma só resposta, com `IsTruncated=false`, e sua documentação indica até 10.000 por resposta. A AWS devolve até 1.000. O serviço envia `MaxParts: 1000`, para a paginação funcionar igual nos dois.
+  - `AbortMultipartUpload` difere dos erros declarados no SDK: repetir o abort de um upload já abortado responde `204` no MinIO, e um `uploadId` que nunca existiu responde `NoSuchUpload`. `ListParts` e `CompleteMultipartUpload` depois do abort respondem `NoSuchUpload`. A SI-03.13 não deve usar o abort para descobrir se o upload ainda existe.
+  - `requestChecksumCalculation` foi medido nas URLs de `UploadPart`: `WHEN_SUPPORTED` acrescenta `x-amz-checksum-crc32` e `x-amz-sdk-checksum-algorithm`, e `WHEN_REQUIRED` não acrescenta nenhum dos dois.
+  - As URLs de `GetObject` carregam `x-amz-checksum-mode`, por causa do padrão de `responseChecksumValidation`, que o plano não altera. O MinIO aceita essas URLs e responde `200` e `206`.
+  - A validade do `GetObject` interno, usado pelo worker, é de 1h. O plano não a define; o valor é suficiente porque a URL é assinada logo antes de `ffprobe` e `ffmpeg`.
+  - Os métodos de assinatura devolvem `{ url, expiresAt }`, para `expires_at` vir da mesma validade usada na assinatura. `headObject` devolve `null` quando o objeto não existe, para a SI-03.13 decidir a resposta.
+  - O plano passou a prever `@SkipThrottle()` em `VideosController` (SI-03.9), e a SI-03.10 e a spec `videos-get.plan.md` ganharam o cenário correspondente, porque o `ThrottlerGuard` global, com 10 requisições por minuto, devolveria `429` ao polling de `status`.
+  - Não provados: a expiração real das URLs, já que os testes conferem `X-Amz-Expires` e `expiresAt` sem esperar o prazo; e o `PUT` a partir de um navegador, que depende de CORS e fica para a fase com tela. `PUT` e `GET` com `Range` em URLs assinadas para `localhost:9000` foram conferidos com `curl` a partir do host.
 
 ### SI-03.5 — Infra: worker em processo próprio
 - **Status:** pending
