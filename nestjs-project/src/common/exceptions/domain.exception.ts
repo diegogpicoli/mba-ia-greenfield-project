@@ -49,6 +49,12 @@ export class TokenReuseDetectedException extends DomainException {
   }
 }
 
+export class VideoTooLargeException extends DomainException {
+  constructor() {
+    super('VIDEO_TOO_LARGE', 413, 'Video exceeds the 10 GiB limit');
+  }
+}
+
 export class UploadNotFoundException extends DomainException {
   constructor() {
     super('UPLOAD_NOT_FOUND', 409, 'Multipart upload not found');

@@ -1,7 +1,7 @@
 # phase-03-videos — Progress
 
 **Status:** in_progress
-**SIs:** 9/18 completed
+**SIs:** 10/18 completed
 
 ### SI-03.1 — Infra: Redis, MinIO e FFmpeg no Compose
 - **Status:** completed
@@ -96,9 +96,16 @@
   - Não provados com job real, só no teste de integração: `failed` de vídeo em `draft` e de `jobId` sem vídeo. Também não foi provada a perda de um `failed` aparado do stream, que exigiria mais de 10.000 eventos com o serviço parado.
 
 ### SI-03.9 — Endpoint POST /videos
-- **Status:** pending
-- **Tests:** no tests
-- **Observations:** none
+- **Status:** completed
+- **Tests:** 37 passing (6 do e2e da spec; 14 de `VideosService` e `VideosModule`, sendo 10 unitários, 3 de integração e 1 de compilação; 10 de `ChannelsService`, com os 2 novos de `findByUserId`; e 7 dos e2e de `AppModule` e Swagger)
+- **Observations:**
+  - `isPgUniqueViolationOnColumn` saiu de `channels.service.ts` para `src/common/database/pg-errors.ts`, porque `VideosService` é o segundo consumidor. O comportamento não mudou.
+  - `test/support/videos-e2e.ts` concentra a montagem da aplicação e o cadastro com login, para os próximos e2e de vídeos. Ele pega `MailService` pelo contêiner, sem acessar campo privado de `AuthService`.
+  - O canal é buscado antes de abrir o multipart, então não sobra upload para usuário sem canal. `findByUserId` usa `findOneByOrFail`, porque o cadastro sempre cria o canal.
+  - Se a gravação falhar depois de abrir o multipart, o upload fica órfão até expirar por `MINIO_API_STALE_UPLOADS_EXPIRY`, em 7 dias. O contrato não prevê abortar nesse caso.
+  - `content_type` com quebra de linha ou caractere não ASCII passa pelo DTO, que só limita o tamanho a 255, e falha no SDK (`ERR_INVALID_CHAR` e `SignatureDoesNotMatch`), sem tradução para erro de domínio. Medido só no SDK, sem chamar a rota. O cabeçalho não chega a ser injetado.
+  - Com o `StorageModule` no `VideosModule`, a API também provisiona os buckets ao subir, e todo e2e sobre `AppModule` passa a depender do MinIO.
+  - `openapi.json` e `src/metadata.ts` não foram regenerados, porque isso é da SI-03.17.
 
 ### SI-03.10 — Endpoint GET /videos/{publicId}
 - **Status:** pending
