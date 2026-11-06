@@ -19,6 +19,7 @@ import { SkipThrottle } from '@nestjs/throttler';
 import type { JwtPayload } from '../auth/auth.types';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { ApiErrorEnvelope } from '../common/openapi/api-error-envelope.dto';
+import { CompleteVideoDto } from './dto/complete-video.dto';
 import { CreateVideoDto } from './dto/create-video.dto';
 import { CreatedVideoResponseDto } from './dto/created-video-response.dto';
 import { SignPartsDto } from './dto/sign-parts.dto';
@@ -173,5 +174,53 @@ export class VideosController {
     @Param('publicId') publicId: string,
   ): Promise<UploadProgressResponseDto> {
     return this.videosService.getUploadProgress(publicId, user.sub);
+  }
+
+  @Post(':publicId/complete')
+  @HttpCode(HttpStatus.OK)
+  @ApiBearerAuth('access-token')
+  @ApiOperation({
+    summary: 'Complete a video upload',
+    description:
+      'Verifies the parts that reached the storage against the list sent by the client, closes the multipart upload and enqueues the processing. Repeating the call is safe and returns the current state of the video.',
+  })
+  @ApiParam({ name: 'publicId', description: 'Public id of the video' })
+  @ApiResponse({
+    status: 200,
+    description: 'The video resource, with its current status',
+    type: VideoResponseDto,
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Validation failed',
+    schema: { $ref: getSchemaPath(ApiErrorEnvelope) },
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'Missing or invalid access token',
+    schema: { $ref: getSchemaPath(ApiErrorEnvelope) },
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'The video does not exist or belongs to another channel',
+    schema: { $ref: getSchemaPath(ApiErrorEnvelope) },
+  })
+  @ApiResponse({
+    status: 409,
+    description:
+      'The uploaded parts do not match the declared file, or the multipart upload no longer exists and the final object has not the declared size',
+    schema: { $ref: getSchemaPath(ApiErrorEnvelope) },
+  })
+  @ApiResponse({
+    status: 413,
+    description: 'The uploaded parts exceed the 10 GiB limit',
+    schema: { $ref: getSchemaPath(ApiErrorEnvelope) },
+  })
+  async complete(
+    @CurrentUser() user: JwtPayload,
+    @Param('publicId') publicId: string,
+    @Body() dto: CompleteVideoDto,
+  ): Promise<VideoResponseDto> {
+    return this.videosService.complete(publicId, user.sub, dto);
   }
 }

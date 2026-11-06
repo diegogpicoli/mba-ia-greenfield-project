@@ -2,6 +2,11 @@ export const VIDEO_PROCESSING_QUEUE = 'video-processing';
 
 export const PROCESS_VIDEO_JOB = 'process-video';
 
+export const PROCESS_VIDEO_JOB_OPTIONS = {
+  attempts: 3,
+  backoff: { type: 'exponential', delay: 30_000 },
+} as const;
+
 export const QUEUE_EVENTS_FIRST_ID = '0-0';
 
 export const VIDEO_PART_SIZE_BYTES = 16 * 1024 * 1024;

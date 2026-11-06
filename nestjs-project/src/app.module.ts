@@ -1,3 +1,4 @@
+import { BullModule } from '@nestjs/bullmq';
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigType } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
@@ -42,6 +43,12 @@ import { VideosModule } from './videos/videos.module';
         database: dbConfig.name,
         autoLoadEntities: true,
         synchronize: false,
+      }),
+    }),
+    BullModule.forRootAsync({
+      inject: [queueConfig.KEY],
+      useFactory: (queue: ConfigType<typeof queueConfig>) => ({
+        connection: { host: queue.host, port: queue.port },
       }),
     }),
     AuthModule,

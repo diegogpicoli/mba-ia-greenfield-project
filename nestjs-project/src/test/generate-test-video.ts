@@ -11,6 +11,7 @@ interface TestVideoOptions {
   audio?: boolean;
   frames?: number;
   container?: 'mp4' | 'matroska' | 'mpegts';
+  noise?: boolean;
 }
 
 function runFfmpeg(args: string[]): Promise<void> {
@@ -34,7 +35,9 @@ function runFfmpeg(args: string[]): Promise<void> {
 /**
  * Generates a video with `ffmpeg -f lavfi`, so that no binary is committed.
  * In an MP4, the default index position is kept, at the end of the file, which
- * is the case that requires HTTP Range reads.
+ * is the case that requires HTTP Range reads. With `noise`, the frames are
+ * encoded without loss, at about 8 MiB per second of video in the default size,
+ * for the cases that need a file with more than one upload part.
  */
 export async function generateTestVideo({
   width = 640,
@@ -44,6 +47,7 @@ export async function generateTestVideo({
   audio = true,
   frames,
   container = 'mp4',
+  noise = false,
 }: TestVideoOptions = {}): Promise<Buffer> {
   const directory = await mkdtemp(join(tmpdir(), 'test-video-'));
   const output = join(directory, 'video');
@@ -53,7 +57,7 @@ export async function generateTestVideo({
           '-f',
           'lavfi',
           '-i',
-          `testsrc=size=${width}x${height}:rate=25:duration=${durationSeconds}`,
+          `testsrc=size=${width}x${height}:rate=25:duration=${durationSeconds}${noise ? ',noise=alls=100:allf=t' : ''}`,
         ]
       : []),
     ...(audio
@@ -62,6 +66,7 @@ export async function generateTestVideo({
   ];
   const encoders = [
     ...(video ? ['-c:v', 'libx264', '-pix_fmt', 'yuv420p'] : []),
+    ...(video && noise ? ['-preset', 'ultrafast', '-qp', '0'] : []),
     ...(audio ? ['-c:a', 'aac'] : []),
     ...(frames !== undefined ? ['-frames:v', String(frames)] : []),
   ];

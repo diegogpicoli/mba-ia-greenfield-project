@@ -73,6 +73,16 @@ export class UploadPartOutOfRangeException extends DomainException {
   }
 }
 
+export class UploadPartsMismatchException extends DomainException {
+  constructor() {
+    super(
+      'UPLOAD_PARTS_MISMATCH',
+      409,
+      'Uploaded parts do not match the declared file',
+    );
+  }
+}
+
 export class UploadNotFoundException extends DomainException {
   constructor() {
     super('UPLOAD_NOT_FOUND', 409, 'Multipart upload not found');

@@ -1,6 +1,9 @@
-import { ConfigModule } from '@nestjs/config';
+import { BullModule, getQueueToken } from '@nestjs/bullmq';
+import { ConfigModule, type ConfigType } from '@nestjs/config';
 import { Test, type TestingModule } from '@nestjs/testing';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import type { Job, Queue } from 'bullmq';
+import { randomBytes } from 'node:crypto';
 import { DataSource, Repository } from 'typeorm';
 import { RefreshToken } from '../auth/entities/refresh-token.entity';
 import { VerificationToken } from '../auth/entities/verification-token.entity';
@@ -10,7 +13,9 @@ import { Channel } from '../channels/entities/channel.entity';
 import {
   UploadNotFoundException,
   VideoNotFoundException,
+  VideoTooLargeException,
 } from '../common/exceptions/domain.exception';
+import queueConfig from '../config/queue.config';
 import storageConfig from '../config/storage.config';
 import { StorageModule } from '../storage/storage.module';
 import { StorageService } from '../storage/storage.service';
@@ -18,9 +23,15 @@ import {
   cleanAllTables,
   createTestDataSource,
 } from '../test/create-test-data-source';
+import {
+  discardTestVideos,
+  waitForIdleQueue,
+} from '../test/discard-test-videos';
+import { generateTestVideo } from '../test/generate-test-video';
 import { presignedRequest } from '../test/presigned-request';
 import { User } from '../users/entities/user.entity';
 import { Video, VideoStatus } from './entities/video.entity';
+import { PROCESS_VIDEO_JOB, VIDEO_PROCESSING_QUEUE } from './videos.constants';
 import { VideosService } from './videos.service';
 
 const ALL_ENTITIES = [User, Channel, RefreshToken, VerificationToken, Video];
@@ -37,6 +48,7 @@ describe('VideosService (integration)', () => {
   let channels: ChannelsService;
   let dataSource: DataSource;
   let videoRepository: Repository<Video>;
+  let queue: Queue;
   let counter = 0;
 
   async function createUserWithChannel(): Promise<{
@@ -55,18 +67,48 @@ describe('VideosService (integration)', () => {
     return { user, channel };
   }
 
-  async function abortOpenUploads(): Promise<void> {
-    for (const video of await videoRepository.find()) {
-      await storage.abortMultipartUpload(video.source_key, video.upload_id);
+  async function sendDraft(
+    userId: string,
+    chunks: Buffer[],
+  ): Promise<{
+    publicId: string;
+    parts: { part_number: number; etag: string }[];
+  }> {
+    const { public_id: publicId } = await service.createDraft(userId, {
+      ...DTO,
+      declared_size: chunks.reduce((total, { length }) => total + length, 0),
+    });
+    const signed = await service.signParts(publicId, userId, {
+      part_numbers: chunks.map((_, index) => index + 1),
+    });
+    const parts: { part_number: number; etag: string }[] = [];
+    for (const { part_number, url } of signed.parts) {
+      const response = await presignedRequest(url, {
+        method: 'PUT',
+        body: chunks[part_number - 1],
+      });
+      expect(response.status).toBe(200);
+      parts.push({ part_number, etag: response.headers.etag! });
     }
+    return { publicId, parts };
   }
 
   beforeAll(async () => {
     module = await Test.createTestingModule({
       imports: [
-        ConfigModule.forRoot({ isGlobal: true, load: [storageConfig] }),
+        ConfigModule.forRoot({
+          isGlobal: true,
+          load: [storageConfig, queueConfig],
+        }),
         TypeOrmModule.forRoot(createTestDataSource(ALL_ENTITIES).options),
         TypeOrmModule.forFeature([Video]),
+        BullModule.forRootAsync({
+          inject: [queueConfig.KEY],
+          useFactory: (config: ConfigType<typeof queueConfig>) => ({
+            connection: { host: config.host, port: config.port },
+          }),
+        }),
+        BullModule.registerQueue({ name: VIDEO_PROCESSING_QUEUE }),
         ChannelsModule,
         StorageModule,
       ],
@@ -78,6 +120,7 @@ describe('VideosService (integration)', () => {
     channels = module.get(ChannelsService);
     dataSource = module.get(DataSource);
     videoRepository = dataSource.getRepository(Video);
+    queue = module.get<Queue>(getQueueToken(VIDEO_PROCESSING_QUEUE));
   }, 120000);
 
   beforeEach(async () => {
@@ -85,7 +128,8 @@ describe('VideosService (integration)', () => {
   });
 
   afterEach(async () => {
-    await abortOpenUploads();
+    jest.restoreAllMocks();
+    await discardTestVideos({ queue, videoRepository, storage });
   });
 
   afterAll(async () => {
@@ -203,6 +247,164 @@ describe('VideosService (integration)', () => {
       await expect(
         service.getUploadProgress(public_id, user.id),
       ).rejects.toBeInstanceOf(UploadNotFoundException);
+    });
+  });
+
+  describe('complete', () => {
+    const CONTENT = Buffer.from('part content');
+
+    function stubQueueAdd(effect?: () => Promise<unknown>) {
+      return jest.spyOn(queue, 'add').mockImplementation(async () => {
+        await effect?.();
+        return {} as Job;
+      });
+    }
+
+    it('should enqueue the planned job, retained after the video-worker takes the video to ready', async () => {
+      const { user } = await createUserWithChannel();
+      const { publicId, parts } = await sendDraft(user.id, [
+        await generateTestVideo(),
+      ]);
+
+      await service.complete(publicId, user.id, { parts });
+
+      const video = await videoRepository.findOneByOrFail({
+        public_id: publicId,
+      });
+      const job = await queue.getJob(video.id);
+      expect(job?.name).toBe(PROCESS_VIDEO_JOB);
+      expect(job?.data).toEqual({ videoId: video.id });
+      expect(job?.opts.attempts).toBe(3);
+      expect(job?.opts.backoff).toEqual({ type: 'exponential', delay: 30000 });
+      expect(job?.opts.removeOnComplete).toBeUndefined();
+      expect(job?.opts.removeOnFail).toBeUndefined();
+      await waitForIdleQueue(queue);
+      await expect(
+        videoRepository.findOneByOrFail({ id: video.id }),
+      ).resolves.toMatchObject({ status: VideoStatus.READY });
+      await expect(queue.getJobState(video.id)).resolves.toBe('completed');
+    });
+
+    it('should write processing when the worker has not answered yet', async () => {
+      const { user } = await createUserWithChannel();
+      const { publicId, parts } = await sendDraft(user.id, [CONTENT]);
+      stubQueueAdd();
+
+      const response = await service.complete(publicId, user.id, { parts });
+
+      expect(response.status).toBe(VideoStatus.PROCESSING);
+      const video = await videoRepository.findOneByOrFail({
+        public_id: publicId,
+      });
+      expect(video.status).toBe(VideoStatus.PROCESSING);
+      await expect(storage.headObject(video.source_key)).resolves.toEqual({
+        size: CONTENT.length,
+      });
+    });
+
+    it.each([VideoStatus.READY, VideoStatus.ERROR])(
+      'should not overwrite a %s written by the worker before the write of processing',
+      async (status) => {
+        const { user } = await createUserWithChannel();
+        const { publicId, parts } = await sendDraft(user.id, [CONTENT]);
+        stubQueueAdd(() =>
+          videoRepository.update({ public_id: publicId }, { status }),
+        );
+
+        const response = await service.complete(publicId, user.id, { parts });
+
+        expect(response.status).toBe(status);
+        await expect(
+          videoRepository.findOneByOrFail({ public_id: publicId }),
+        ).resolves.toMatchObject({ status });
+      },
+    );
+
+    it('should abort the real upload when the sum exceeds 10 GiB', async () => {
+      const { user } = await createUserWithChannel();
+      const { publicId, parts } = await sendDraft(user.id, [CONTENT]);
+      const video = await videoRepository.findOneByOrFail({
+        public_id: publicId,
+      });
+      const add = stubQueueAdd();
+      jest.spyOn(storage, 'listParts').mockResolvedValueOnce([
+        {
+          partNumber: 1,
+          etag: parts[0].etag,
+          size: 10737418241,
+        },
+      ]);
+
+      await expect(
+        service.complete(publicId, user.id, { parts }),
+      ).rejects.toBeInstanceOf(VideoTooLargeException);
+
+      await expect(
+        storage.listParts(video.source_key, video.upload_id),
+      ).rejects.toBeInstanceOf(UploadNotFoundException);
+      expect(add).not.toHaveBeenCalled();
+      await expect(
+        videoRepository.findOneByOrFail({ public_id: publicId }),
+      ).resolves.toMatchObject({ status: VideoStatus.DRAFT });
+    });
+
+    it('should not create a second job when the call is repeated in draft', async () => {
+      const { user } = await createUserWithChannel();
+      const { publicId, parts } = await sendDraft(user.id, [
+        await generateTestVideo(),
+      ]);
+      await service.complete(publicId, user.id, { parts });
+      const video = await videoRepository.findOneByOrFail({
+        public_id: publicId,
+      });
+      const job = await queue.getJob(video.id);
+      expect(job).toBeDefined();
+      await waitForIdleQueue(queue);
+      await videoRepository.update(
+        { id: video.id },
+        { status: VideoStatus.DRAFT },
+      );
+
+      const response = await service.complete(publicId, user.id, { parts });
+
+      expect(response.status).toBe(VideoStatus.PROCESSING);
+      const repeated = await queue.getJob(video.id);
+      expect(repeated?.timestamp).toBe(job?.timestamp);
+      await expect(queue.getJobState(video.id)).resolves.toBe('completed');
+    });
+
+    it('should accept the ETags without quotes in the real MinIO', async () => {
+      const { user } = await createUserWithChannel();
+      const { publicId, parts } = await sendDraft(user.id, [CONTENT]);
+      stubQueueAdd();
+
+      const response = await service.complete(publicId, user.id, {
+        parts: parts.map(({ part_number, etag }) => ({
+          part_number,
+          etag: etag.replaceAll('"', ''),
+        })),
+      });
+
+      expect(response.status).toBe(VideoStatus.PROCESSING);
+    });
+
+    it('should close a list sent out of order in the real MinIO', async () => {
+      const { user } = await createUserWithChannel();
+      const chunks = [randomBytes(16 * 1024 * 1024), randomBytes(1024)];
+      const { publicId, parts } = await sendDraft(user.id, chunks);
+      stubQueueAdd();
+
+      const response = await service.complete(publicId, user.id, {
+        parts: [...parts].reverse(),
+      });
+
+      expect(response.status).toBe(VideoStatus.PROCESSING);
+      const video = await videoRepository.findOneByOrFail({
+        public_id: publicId,
+      });
+      await expect(storage.headObject(video.source_key)).resolves.toEqual({
+        size: chunks[0].length + chunks[1].length,
+      });
     });
   });
 

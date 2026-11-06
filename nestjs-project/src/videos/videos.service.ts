@@ -1,16 +1,24 @@
+import { InjectQueue } from '@nestjs/bullmq';
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+import { Queue } from 'bullmq';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { Repository } from 'typeorm';
 import { ChannelsService } from '../channels/channels.service';
 import { isPgUniqueViolationOnColumn } from '../common/database/pg-errors';
 import {
+  UploadNotFoundException,
   UploadPartOutOfRangeException,
+  UploadPartsMismatchException,
   VideoNotFoundException,
   VideoTooLargeException,
   VideoUploadClosedException,
 } from '../common/exceptions/domain.exception';
 import { StorageService } from '../storage/storage.service';
+import type {
+  CompletedPartDto,
+  CompleteVideoDto,
+} from './dto/complete-video.dto';
 import type { CreateVideoDto } from './dto/create-video.dto';
 import type { CreatedVideoResponseDto } from './dto/created-video-response.dto';
 import type { SignPartsDto } from './dto/sign-parts.dto';
@@ -18,12 +26,17 @@ import type { SignedPartsResponseDto } from './dto/signed-parts-response.dto';
 import type { UploadProgressResponseDto } from './dto/upload-progress-response.dto';
 import type { VideoResponseDto } from './dto/video-response.dto';
 import { Video, VideoStatus } from './entities/video.entity';
+import { partsMatchDeclaredFile, sumPartSizes } from './part-verification.util';
+import type { ProcessVideoJobData } from './video.processor';
 import {
+  PROCESS_VIDEO_JOB,
+  PROCESS_VIDEO_JOB_OPTIONS,
   PUBLIC_ID_BYTES,
   PUBLIC_ID_COLUMN,
   PUBLIC_ID_MAX_ATTEMPTS,
   VIDEO_MAX_SIZE_BYTES,
   VIDEO_PART_SIZE_BYTES,
+  VIDEO_PROCESSING_QUEUE,
   VIDEO_SOURCE_FILE_NAME,
 } from './videos.constants';
 
@@ -38,6 +51,8 @@ export class VideosService {
     private readonly videoRepository: Repository<Video>,
     private readonly channelsService: ChannelsService,
     private readonly storageService: StorageService,
+    @InjectQueue(VIDEO_PROCESSING_QUEUE)
+    private readonly videoQueue: Queue<ProcessVideoJobData>,
   ) {}
 
   async createDraft(
@@ -147,6 +162,28 @@ export class VideosService {
     };
   }
 
+  async complete(
+    publicId: string,
+    userId: string,
+    dto: CompleteVideoDto,
+  ): Promise<VideoResponseDto> {
+    const video = await this.findOwned(publicId, userId);
+    if (video.status !== VideoStatus.DRAFT) {
+      return this.toResponse(video);
+    }
+    await this.closeUpload(video, dto.parts);
+    await this.videoQueue.add(
+      PROCESS_VIDEO_JOB,
+      { videoId: video.id },
+      { ...PROCESS_VIDEO_JOB_OPTIONS, jobId: video.id },
+    );
+    await this.videoRepository.update(
+      { id: video.id, status: VideoStatus.DRAFT },
+      { status: VideoStatus.PROCESSING },
+    );
+    return this.getOwned(publicId, userId);
+  }
+
   private async findOwnedDraft(
     publicId: string,
     userId: string,
@@ -156,6 +193,56 @@ export class VideosService {
       throw new VideoUploadClosedException();
     }
     return video;
+  }
+
+  private async closeUpload(
+    video: Video,
+    parts: CompletedPartDto[],
+  ): Promise<void> {
+    try {
+      await this.verifyAndCompleteUpload(video, parts);
+    } catch (error) {
+      if (!(error instanceof UploadNotFoundException)) {
+        throw error;
+      }
+      const stored = await this.storageService.headObject(video.source_key);
+      if (stored?.size !== video.declared_size) {
+        throw error;
+      }
+    }
+  }
+
+  private async verifyAndCompleteUpload(
+    video: Video,
+    parts: CompletedPartDto[],
+  ): Promise<void> {
+    const storedParts = await this.storageService.listParts(
+      video.source_key,
+      video.upload_id,
+    );
+    if (sumPartSizes(storedParts) > VIDEO_MAX_SIZE_BYTES) {
+      await this.storageService.abortMultipartUpload(
+        video.source_key,
+        video.upload_id,
+      );
+      throw new VideoTooLargeException();
+    }
+    const matches = partsMatchDeclaredFile({
+      clientParts: parts,
+      storedParts,
+      partCount: partCountOf(video.declared_size),
+      declaredSize: video.declared_size,
+    });
+    if (!matches) {
+      throw new UploadPartsMismatchException();
+    }
+    await this.storageService.completeMultipartUpload(
+      video.source_key,
+      video.upload_id,
+      [...parts]
+        .sort((first, second) => first.part_number - second.part_number)
+        .map(({ part_number, etag }) => ({ partNumber: part_number, etag })),
+    );
   }
 
   private toResponse(video: Video): VideoResponseDto {

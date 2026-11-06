@@ -1,7 +1,7 @@
 # phase-03-videos — Progress
 
 **Status:** in_progress
-**SIs:** 13/18 completed
+**SIs:** 14/18 completed
 
 ### SI-03.1 — Infra: Redis, MinIO e FFmpeg no Compose
 - **Status:** completed
@@ -135,9 +135,17 @@
   - Não provado: a resposta com mais de uma página de `ListParts` por este endpoint. Um vídeo tem no máximo 640 partes, e a página é de 1.000. A paginação foi provada na SI-03.4, no `StorageService`.
 
 ### SI-03.13 — Endpoint POST /videos/{publicId}/complete
-- **Status:** pending
-- **Tests:** no tests
-- **Observations:** none
+- **Status:** completed
+- **Tests:** 155 passing (9 do e2e da spec, 22 dos demais e2e de vídeos, 52 de `app`, `swagger` e `auth`, 13 de `part-verification.util`, 40 unitários de `VideosService`, 18 de integração e 1 de `VideosModule`)
+- **Observations:**
+  - Com o `video-worker` do Compose e um vídeo de 25 MiB em duas partes, a sequência observada foi `processing` na resposta do `complete` e `ready` no `GET` seguinte. Em vídeos menores, o `complete` pode já responder `ready`, porque o `status` é relido depois da gravação.
+  - Soma acima de 10 GiB é provada com a listagem simulada, porque um envio real desse tamanho não cabe no ambiente. O aborto é real, e o `ListParts` seguinte responde `NoSuchUpload`.
+  - O `ready` ou `error` gravado antes de `processing` é provado com `queue.add` simulado gravando o `status` no Postgres real, para fixar a ordem. A gravação condicional é a real.
+  - A AWS documenta `InvalidPartOrder` para lista fora de ordem no `CompleteMultipartUpload`, então a lista é ordenada antes de fechar. A lista invertida e os ETags sem aspas são aceitos pelo MinIO no teste de integração.
+  - `generateTestVideo` ganhou a opção `noise`, com cerca de 8 MiB por segundo de vídeo, para arquivos com mais de uma parte. `discardTestVideos`, em `src/test/`, espera a fila esvaziar e remove o que as linhas apontam no storage e na fila.
+  - `AppModule` agora abre conexão com o Redis, então os e2e que sobem o módulo dependem do serviço `redis`.
+  - Limite conhecido: soma correta com parte intermediária abaixo de 5 MiB passa na verificação, e o `CompleteMultipartUpload` responde `EntityTooSmall`. A API devolve `500`, e o upload continua aberto. O contrato não prevê esse caso, e um cliente que segue o `part_size` devolvido por `POST /videos` não chega a ele.
+  - Não provado: o `complete` com o Redis fora do ar, e um `PUT` repetido entre a verificação e o fechamento, que levaria a `InvalidPart`.
 
 ### SI-03.14 — Endpoint GET /videos/{publicId}/stream
 - **Status:** pending
