@@ -67,6 +67,12 @@ export class VideoUploadClosedException extends DomainException {
   }
 }
 
+export class VideoNotReadyException extends DomainException {
+  constructor() {
+    super('VIDEO_NOT_READY', 409, 'Video is not ready');
+  }
+}
+
 export class UploadPartOutOfRangeException extends DomainException {
   constructor() {
     super('UPLOAD_PART_OUT_OF_RANGE', 400, 'Part number is out of range');

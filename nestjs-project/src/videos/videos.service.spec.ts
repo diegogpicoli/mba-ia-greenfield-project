@@ -8,6 +8,7 @@ import {
   UploadPartOutOfRangeException,
   UploadPartsMismatchException,
   VideoNotFoundException,
+  VideoNotReadyException,
   VideoTooLargeException,
   VideoUploadClosedException,
 } from '../common/exceptions/domain.exception';
@@ -55,6 +56,7 @@ describe('VideosService', () => {
     completeMultipartUpload: jest.fn(),
     abortMultipartUpload: jest.fn(),
     headObject: jest.fn(),
+    signClientRead: jest.fn(),
   };
   const videoQueue = { add: jest.fn() };
 
@@ -543,6 +545,45 @@ describe('VideosService', () => {
       );
 
       expect(videoRepository.update).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('getStreamUrl', () => {
+    const ready = {
+      status: VideoStatus.READY,
+      source_key: 'internal-id/source',
+    };
+
+    it.each([VideoStatus.DRAFT, VideoStatus.PROCESSING, VideoStatus.ERROR])(
+      'should refuse a video in %s, without signing',
+      async (status) => {
+        videoRepository.findOne.mockResolvedValue({ ...ready, status });
+
+        await expect(
+          service.getStreamUrl('public-id', USER_ID),
+        ).rejects.toBeInstanceOf(VideoNotReadyException);
+
+        expect(storageService.signClientRead).not.toHaveBeenCalled();
+      },
+    );
+
+    it('should sign the read of the source of a ready video, without a disposition', async () => {
+      const expiresAt = new Date('2026-11-06T16:00:00Z');
+      videoRepository.findOne.mockResolvedValue(ready);
+      storageService.signClientRead.mockResolvedValue({
+        url: 'http://storage/source',
+        expiresAt,
+      });
+
+      await expect(service.getStreamUrl('public-id', USER_ID)).resolves.toEqual(
+        {
+          url: 'http://storage/source',
+          expires_at: expiresAt,
+        },
+      );
+      expect(storageService.signClientRead).toHaveBeenCalledWith(
+        'internal-id/source',
+      );
     });
   });
 

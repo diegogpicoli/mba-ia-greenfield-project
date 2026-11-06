@@ -26,6 +26,7 @@ import { SignPartsDto } from './dto/sign-parts.dto';
 import { SignedPartsResponseDto } from './dto/signed-parts-response.dto';
 import { UploadProgressResponseDto } from './dto/upload-progress-response.dto';
 import { VideoResponseDto } from './dto/video-response.dto';
+import { VideoUrlResponseDto } from './dto/video-url-response.dto';
 import { VideosService } from './videos.service';
 
 @SkipThrottle()
@@ -222,5 +223,40 @@ export class VideosController {
     @Body() dto: CompleteVideoDto,
   ): Promise<VideoResponseDto> {
     return this.videosService.complete(publicId, user.sub, dto);
+  }
+
+  @Get(':publicId/stream')
+  @ApiBearerAuth('access-token')
+  @ApiOperation({
+    summary: 'Get the URL to stream a video',
+    description:
+      'Returns a presigned URL, valid for 6 hours, that the storage answers with HTTP Range, so that the video plays without a full download. When the storage answers 403, the client asks for another URL.',
+  })
+  @ApiParam({ name: 'publicId', description: 'Public id of the video' })
+  @ApiResponse({
+    status: 200,
+    description: 'The presigned URL and its expiration',
+    type: VideoUrlResponseDto,
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'Missing or invalid access token',
+    schema: { $ref: getSchemaPath(ApiErrorEnvelope) },
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'The video does not exist or belongs to another channel',
+    schema: { $ref: getSchemaPath(ApiErrorEnvelope) },
+  })
+  @ApiResponse({
+    status: 409,
+    description: 'The video is not ready',
+    schema: { $ref: getSchemaPath(ApiErrorEnvelope) },
+  })
+  async getStreamUrl(
+    @CurrentUser() user: JwtPayload,
+    @Param('publicId') publicId: string,
+  ): Promise<VideoUrlResponseDto> {
+    return this.videosService.getStreamUrl(publicId, user.sub);
   }
 }

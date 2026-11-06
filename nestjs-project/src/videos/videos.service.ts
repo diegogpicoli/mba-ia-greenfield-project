@@ -11,6 +11,7 @@ import {
   UploadPartOutOfRangeException,
   UploadPartsMismatchException,
   VideoNotFoundException,
+  VideoNotReadyException,
   VideoTooLargeException,
   VideoUploadClosedException,
 } from '../common/exceptions/domain.exception';
@@ -25,6 +26,7 @@ import type { SignPartsDto } from './dto/sign-parts.dto';
 import type { SignedPartsResponseDto } from './dto/signed-parts-response.dto';
 import type { UploadProgressResponseDto } from './dto/upload-progress-response.dto';
 import type { VideoResponseDto } from './dto/video-response.dto';
+import type { VideoUrlResponseDto } from './dto/video-url-response.dto';
 import { Video, VideoStatus } from './entities/video.entity';
 import { partsMatchDeclaredFile, sumPartSizes } from './part-verification.util';
 import type { ProcessVideoJobData } from './video.processor';
@@ -182,6 +184,20 @@ export class VideosService {
       { status: VideoStatus.PROCESSING },
     );
     return this.getOwned(publicId, userId);
+  }
+
+  async getStreamUrl(
+    publicId: string,
+    userId: string,
+  ): Promise<VideoUrlResponseDto> {
+    const video = await this.findOwned(publicId, userId);
+    if (video.status !== VideoStatus.READY) {
+      throw new VideoNotReadyException();
+    }
+    const { url, expiresAt } = await this.storageService.signClientRead(
+      video.source_key,
+    );
+    return { url, expires_at: expiresAt };
   }
 
   private async findOwnedDraft(

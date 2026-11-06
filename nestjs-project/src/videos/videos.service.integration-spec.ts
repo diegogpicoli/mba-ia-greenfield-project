@@ -408,6 +408,34 @@ describe('VideosService (integration)', () => {
     });
   });
 
+  describe('getStreamUrl', () => {
+    it('should give a URL that the real MinIO answers with a Range in the middle of the file', async () => {
+      const { user } = await createUserWithChannel();
+      const content = randomBytes(2048);
+      const { publicId, parts } = await sendDraft(user.id, [content]);
+      jest.spyOn(queue, 'add').mockResolvedValue({} as Job);
+      await service.complete(publicId, user.id, { parts });
+      await videoRepository.update(
+        { public_id: publicId },
+        { status: VideoStatus.READY },
+      );
+
+      const { url, expires_at } = await service.getStreamUrl(publicId, user.id);
+
+      const signed = new URL(url);
+      expect(signed.origin).toBe(storageConfig().publicEndpoint);
+      expect(signed.searchParams.get('X-Amz-Expires')).toBe('21600');
+      expect(expires_at).toBeInstanceOf(Date);
+      const read = await presignedRequest(url, {
+        headers: { Range: 'bytes=1024-1535' },
+      });
+      expect(read.status).toBe(206);
+      expect(read.headers['content-range']).toBe('bytes 1024-1535/2048');
+      expect(read.headers['content-type']).toBe(DTO.content_type);
+      expect(read.body.equals(content.subarray(1024, 1536))).toBe(true);
+    });
+  });
+
   describe('findOwned', () => {
     it('should return the video to its owner', async () => {
       const { user, channel } = await createUserWithChannel();

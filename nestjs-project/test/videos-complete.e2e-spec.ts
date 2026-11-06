@@ -3,7 +3,6 @@ import type { INestApplication } from '@nestjs/common';
 import { ThrottlerStorage, ThrottlerStorageService } from '@nestjs/throttler';
 import type { Queue } from 'bullmq';
 import { randomBytes } from 'node:crypto';
-import { setTimeout as sleep } from 'node:timers/promises';
 import request from 'supertest';
 import type { App } from 'supertest/types';
 import { DataSource, type Repository } from 'typeorm';
@@ -11,28 +10,23 @@ import { StorageService } from '../src/storage/storage.service';
 import { cleanAllTables } from '../src/test/create-test-data-source';
 import { discardTestVideos } from '../src/test/discard-test-videos';
 import { generateTestVideo } from '../src/test/generate-test-video';
-import { presignedRequest } from '../src/test/presigned-request';
 import { Video, VideoStatus } from '../src/videos/entities/video.entity';
 import { VIDEO_PROCESSING_QUEUE } from '../src/videos/videos.constants';
 import {
+  type ClientPart,
+  createVideo,
   createVideosTestApp,
   registerConfirmAndLogin,
+  sendParts,
+  type VideoBody,
+  waitForFinalStatus,
 } from './support/videos-e2e';
 
 const SIXTEEN_MIB = 16 * 1024 * 1024;
 const FOUR_MIB = 4 * 1024 * 1024;
 const ONE_MIB = 1024 * 1024;
 const DECLARED_SIZE = 20971520;
-const FINAL_STATUS_TIMEOUT_MS = 45_000;
-const FINAL_STATUS_POLL_MS = 200;
 
-type ClientPart = { part_number: number; etag: string };
-type VideoBody = {
-  status: VideoStatus;
-  duration: number | null;
-  thumbnail_url: string | null;
-};
-type SignedBody = { parts: { part_number: number; url: string }[] };
 type ErrorBody = { error: string };
 
 describe('videos-complete', () => {
@@ -51,40 +45,6 @@ describe('videos-complete', () => {
     await cleanAllTables(dataSource);
   }
 
-  async function createVideo(declaredSize: number): Promise<string> {
-    const response = await request(app.getHttpServer())
-      .post('/videos')
-      .auth(ownerToken, { type: 'bearer' })
-      .send({
-        original_filename: 'aula.mp4',
-        declared_size: declaredSize,
-        content_type: 'video/mp4',
-      })
-      .expect(201);
-    return (response.body as { public_id: string }).public_id;
-  }
-
-  async function sendParts(
-    publicId: string,
-    chunks: Buffer[],
-  ): Promise<ClientPart[]> {
-    const signed = await request(app.getHttpServer())
-      .post(`/videos/${publicId}/parts/sign`)
-      .auth(ownerToken, { type: 'bearer' })
-      .send({ part_numbers: chunks.map((_, index) => index + 1) })
-      .expect(200);
-    const parts: ClientPart[] = [];
-    for (const { part_number, url } of (signed.body as SignedBody).parts) {
-      const response = await presignedRequest(url, {
-        method: 'PUT',
-        body: chunks[part_number - 1],
-      });
-      expect(response.status).toBe(200);
-      parts.push({ part_number, etag: response.headers.etag! });
-    }
-    return parts;
-  }
-
   function complete(
     publicId: string,
     parts: ClientPart[],
@@ -96,33 +56,14 @@ describe('videos-complete', () => {
     return token === null ? call : call.auth(token, { type: 'bearer' });
   }
 
-  async function waitForFinalStatus(publicId: string): Promise<VideoBody> {
-    const deadline = Date.now() + FINAL_STATUS_TIMEOUT_MS;
-    for (;;) {
-      const response = await request(app.getHttpServer())
-        .get(`/videos/${publicId}`)
-        .auth(ownerToken, { type: 'bearer' })
-        .expect(200);
-      const body = response.body as VideoBody;
-      if (
-        body.status === VideoStatus.READY ||
-        body.status === VideoStatus.ERROR
-      ) {
-        return body;
-      }
-      if (Date.now() > deadline) {
-        throw new Error(`Video still in ${body.status} after the time limit`);
-      }
-      await sleep(FINAL_STATUS_POLL_MS);
-    }
-  }
-
   async function sendValidVideo(): Promise<{
     publicId: string;
     parts: ClientPart[];
   }> {
-    const publicId = await createVideo(validVideo.length);
-    const parts = await sendParts(publicId, [validVideo]);
+    const publicId = await createVideo(app, ownerToken, {
+      declaredSize: validVideo.length,
+    });
+    const parts = await sendParts(app, ownerToken, publicId, [validVideo]);
     return { publicId, parts };
   }
 
@@ -172,8 +113,10 @@ describe('videos-complete', () => {
   it('fecha-e-processa', async () => {
     const file = await generateTestVideo({ durationSeconds: 3, noise: true });
     expect(file.length).toBeGreaterThan(SIXTEEN_MIB);
-    const publicId = await createVideo(file.length);
-    const parts = await sendParts(publicId, [
+    const publicId = await createVideo(app, ownerToken, {
+      declaredSize: file.length,
+    });
+    const parts = await sendParts(app, ownerToken, publicId, [
       file.subarray(0, SIXTEEN_MIB),
       file.subarray(SIXTEEN_MIB),
     ]);
@@ -183,15 +126,17 @@ describe('videos-complete', () => {
     expect([VideoStatus.PROCESSING, VideoStatus.READY]).toContain(
       (response.body as VideoBody).status,
     );
-    const final = await waitForFinalStatus(publicId);
+    const final = await waitForFinalStatus(app, ownerToken, publicId);
     expect(final.status).toBe(VideoStatus.READY);
     expect(final.duration).toBeGreaterThan(0);
     expect(final.thumbnail_url).toEqual(expect.any(String));
   });
 
   it('rejeita-lista-sem-parte', async () => {
-    const publicId = await createVideo(DECLARED_SIZE);
-    const parts = await sendParts(publicId, [
+    const publicId = await createVideo(app, ownerToken, {
+      declaredSize: DECLARED_SIZE,
+    });
+    const parts = await sendParts(app, ownerToken, publicId, [
       randomBytes(SIXTEEN_MIB),
       randomBytes(FOUR_MIB),
     ]);
@@ -203,8 +148,10 @@ describe('videos-complete', () => {
   });
 
   it('rejeita-etag-divergente', async () => {
-    const publicId = await createVideo(DECLARED_SIZE);
-    const parts = await sendParts(publicId, [
+    const publicId = await createVideo(app, ownerToken, {
+      declaredSize: DECLARED_SIZE,
+    });
+    const parts = await sendParts(app, ownerToken, publicId, [
       randomBytes(SIXTEEN_MIB),
       randomBytes(FOUR_MIB),
     ]);
@@ -219,8 +166,10 @@ describe('videos-complete', () => {
   });
 
   it('rejeita-soma-diferente-do-declarado', async () => {
-    const publicId = await createVideo(DECLARED_SIZE);
-    const parts = await sendParts(publicId, [
+    const publicId = await createVideo(app, ownerToken, {
+      declaredSize: DECLARED_SIZE,
+    });
+    const parts = await sendParts(app, ownerToken, publicId, [
       randomBytes(SIXTEEN_MIB),
       randomBytes(ONE_MIB),
     ]);
@@ -234,7 +183,7 @@ describe('videos-complete', () => {
   it('repetir-depois-de-fechado-responde-estado-atual', async () => {
     const { publicId, parts } = await sendValidVideo();
     await complete(publicId, parts).expect(200);
-    const final = await waitForFinalStatus(publicId);
+    const final = await waitForFinalStatus(app, ownerToken, publicId);
     expect(final.status).toBe(VideoStatus.READY);
     const storageCalls = [
       jest.spyOn(storage, 'listParts'),
@@ -279,12 +228,14 @@ describe('videos-complete', () => {
     const response = await complete(publicId, parts).expect(200);
 
     expect((response.body as VideoBody).status).not.toBe(VideoStatus.DRAFT);
-    const final = await waitForFinalStatus(publicId);
+    const final = await waitForFinalStatus(app, ownerToken, publicId);
     expect(final.status).toBe(VideoStatus.READY);
   });
 
   it('repetir-em-draft-sem-objeto-responde-erro', async () => {
-    const publicId = await createVideo(DECLARED_SIZE);
+    const publicId = await createVideo(app, ownerToken, {
+      declaredSize: DECLARED_SIZE,
+    });
     const video = await videoRepository.findOneByOrFail({
       public_id: publicId,
     });
@@ -313,7 +264,9 @@ describe('videos-complete', () => {
   });
 
   it('outro-usuario-sem-token-e-parts-vazio', async () => {
-    const publicId = await createVideo(DECLARED_SIZE);
+    const publicId = await createVideo(app, ownerToken, {
+      declaredSize: DECLARED_SIZE,
+    });
     const parts = [
       { part_number: 1, etag: '"00000000000000000000000000000000"' },
     ];

@@ -1,7 +1,7 @@
 # phase-03-videos — Progress
 
 **Status:** in_progress
-**SIs:** 14/18 completed
+**SIs:** 15/18 completed
 
 ### SI-03.1 — Infra: Redis, MinIO e FFmpeg no Compose
 - **Status:** completed
@@ -148,9 +148,13 @@
   - Não provado: o `complete` com o Redis fora do ar, e um `PUT` repetido entre a verificação e o fechamento, que levaria a `InvalidPart`.
 
 ### SI-03.14 — Endpoint GET /videos/{publicId}/stream
-- **Status:** pending
-- **Tests:** no tests
-- **Observations:** none
+- **Status:** completed
+- **Tests:** 76 passing (4 do e2e da spec, 9 do e2e de `videos-complete` e 63 de `VideosService`, sendo 44 unitários e 19 de integração)
+- **Observations:**
+  - A URL assinada pelo endpoint público responde a um `Range` no meio do arquivo com `206`, o `Content-Range` e exatamente aqueles bytes, conforme o teste de integração no MinIO.
+  - O `Content-Type` do `GetObject` é o informado em `POST /videos`, gravado no `CreateMultipartUpload`.
+  - O fluxo de upload até o `status` final foi para `test/support/videos-e2e.ts`, para servir aos e2e que precisam de um vídeo em `ready`.
+  - Não provado: a expiração real da URL, porque os testes conferem `expires_at` e `X-Amz-Expires` sem esperar 6h, e o `403` do storage depois de expirar.
 
 ### SI-03.15 — Endpoint GET /videos/{publicId}/download
 - **Status:** pending
