@@ -15,6 +15,7 @@ import type { CreateVideoDto } from './dto/create-video.dto';
 import type { CreatedVideoResponseDto } from './dto/created-video-response.dto';
 import type { SignPartsDto } from './dto/sign-parts.dto';
 import type { SignedPartsResponseDto } from './dto/signed-parts-response.dto';
+import type { UploadProgressResponseDto } from './dto/upload-progress-response.dto';
 import type { VideoResponseDto } from './dto/video-response.dto';
 import { Video, VideoStatus } from './entities/video.entity';
 import {
@@ -94,10 +95,7 @@ export class VideosService {
     userId: string,
     dto: SignPartsDto,
   ): Promise<SignedPartsResponseDto> {
-    const video = await this.findOwned(publicId, userId);
-    if (video.status !== VideoStatus.DRAFT) {
-      throw new VideoUploadClosedException();
-    }
+    const video = await this.findOwnedDraft(publicId, userId);
     const partCount = partCountOf(video.declared_size);
     if (dto.part_numbers.some((partNumber) => partNumber > partCount)) {
       throw new UploadPartOutOfRangeException();
@@ -120,6 +118,44 @@ export class VideosService {
         Math.min(...signed.map(({ expiresAt }) => expiresAt.getTime())),
       ),
     };
+  }
+
+  async getUploadProgress(
+    publicId: string,
+    userId: string,
+  ): Promise<UploadProgressResponseDto> {
+    const video = await this.findOwnedDraft(publicId, userId);
+    const uploaded = await this.storageService.listParts(
+      video.source_key,
+      video.upload_id,
+    );
+    const partCount = partCountOf(video.declared_size);
+    const uploadedNumbers = new Set(
+      uploaded.map(({ partNumber }) => partNumber),
+    );
+    return {
+      part_size: VIDEO_PART_SIZE_BYTES,
+      part_count: partCount,
+      uploaded_parts: uploaded.map(({ partNumber, etag }) => ({
+        part_number: partNumber,
+        etag,
+      })),
+      missing_part_numbers: Array.from(
+        { length: partCount },
+        (_, index) => index + 1,
+      ).filter((partNumber) => !uploadedNumbers.has(partNumber)),
+    };
+  }
+
+  private async findOwnedDraft(
+    publicId: string,
+    userId: string,
+  ): Promise<Video> {
+    const video = await this.findOwned(publicId, userId);
+    if (video.status !== VideoStatus.DRAFT) {
+      throw new VideoUploadClosedException();
+    }
+    return video;
   }
 
   private toResponse(video: Video): VideoResponseDto {

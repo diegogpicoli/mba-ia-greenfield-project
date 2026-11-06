@@ -23,6 +23,7 @@ import { CreateVideoDto } from './dto/create-video.dto';
 import { CreatedVideoResponseDto } from './dto/created-video-response.dto';
 import { SignPartsDto } from './dto/sign-parts.dto';
 import { SignedPartsResponseDto } from './dto/signed-parts-response.dto';
+import { UploadProgressResponseDto } from './dto/upload-progress-response.dto';
 import { VideoResponseDto } from './dto/video-response.dto';
 import { VideosService } from './videos.service';
 
@@ -136,5 +137,41 @@ export class VideosController {
     @Body() dto: SignPartsDto,
   ): Promise<SignedPartsResponseDto> {
     return this.videosService.signParts(publicId, user.sub, dto);
+  }
+
+  @Get(':publicId/parts')
+  @ApiBearerAuth('access-token')
+  @ApiOperation({
+    summary: 'Get the upload progress',
+    description:
+      'Returns the parts that already reached the storage, with their ETags, and the part numbers still missing, so that the client can resume the upload.',
+  })
+  @ApiParam({ name: 'publicId', description: 'Public id of the video' })
+  @ApiResponse({
+    status: 200,
+    description: 'The uploaded parts and the part numbers still missing',
+    type: UploadProgressResponseDto,
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'Missing or invalid access token',
+    schema: { $ref: getSchemaPath(ApiErrorEnvelope) },
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'The video does not exist or belongs to another channel',
+    schema: { $ref: getSchemaPath(ApiErrorEnvelope) },
+  })
+  @ApiResponse({
+    status: 409,
+    description:
+      'The video is no longer a draft, or its multipart upload no longer exists',
+    schema: { $ref: getSchemaPath(ApiErrorEnvelope) },
+  })
+  async getUploadProgress(
+    @CurrentUser() user: JwtPayload,
+    @Param('publicId') publicId: string,
+  ): Promise<UploadProgressResponseDto> {
+    return this.videosService.getUploadProgress(publicId, user.sub);
   }
 }

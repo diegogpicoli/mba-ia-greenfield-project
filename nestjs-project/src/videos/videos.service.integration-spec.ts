@@ -7,7 +7,10 @@ import { VerificationToken } from '../auth/entities/verification-token.entity';
 import { ChannelsModule } from '../channels/channels.module';
 import { ChannelsService } from '../channels/channels.service';
 import { Channel } from '../channels/entities/channel.entity';
-import { VideoNotFoundException } from '../common/exceptions/domain.exception';
+import {
+  UploadNotFoundException,
+  VideoNotFoundException,
+} from '../common/exceptions/domain.exception';
 import storageConfig from '../config/storage.config';
 import { StorageModule } from '../storage/storage.module';
 import { StorageService } from '../storage/storage.service';
@@ -155,6 +158,51 @@ describe('VideosService (integration)', () => {
 
       expect(parts.map(({ part_number }) => part_number)).toEqual(numbers);
       expect(new Set(parts.map(({ url }) => url)).size).toBe(640);
+    });
+  });
+
+  describe('getUploadProgress', () => {
+    it('should report the real progress in MinIO, with the ETag the client received on the PUT', async () => {
+      const { user } = await createUserWithChannel();
+      const { public_id } = await service.createDraft(user.id, DTO);
+
+      await expect(
+        service.getUploadProgress(public_id, user.id),
+      ).resolves.toEqual({
+        part_size: 16777216,
+        part_count: 2,
+        uploaded_parts: [],
+        missing_part_numbers: [1, 2],
+      });
+
+      const { parts } = await service.signParts(public_id, user.id, {
+        part_numbers: [1],
+      });
+      const sent = await presignedRequest(parts[0].url, {
+        method: 'PUT',
+        body: Buffer.from('part content'),
+      });
+      expect(sent.status).toBe(200);
+
+      await expect(
+        service.getUploadProgress(public_id, user.id),
+      ).resolves.toEqual({
+        part_size: 16777216,
+        part_count: 2,
+        uploaded_parts: [{ part_number: 1, etag: sent.headers.etag }],
+        missing_part_numbers: [2],
+      });
+    });
+
+    it('should translate an aborted upload into UPLOAD_NOT_FOUND', async () => {
+      const { user } = await createUserWithChannel();
+      const { public_id } = await service.createDraft(user.id, DTO);
+      const video = await videoRepository.findOneByOrFail({ public_id });
+      await storage.abortMultipartUpload(video.source_key, video.upload_id);
+
+      await expect(
+        service.getUploadProgress(public_id, user.id),
+      ).rejects.toBeInstanceOf(UploadNotFoundException);
     });
   });
 

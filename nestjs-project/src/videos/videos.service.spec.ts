@@ -43,6 +43,7 @@ describe('VideosService', () => {
     createMultipartUpload: jest.fn(),
     getThumbnailUrl: jest.fn(),
     signUploadPart: jest.fn(),
+    listParts: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -216,6 +217,79 @@ describe('VideosService', () => {
       });
 
       expect(response.expires_at).toEqual(earliest);
+    });
+  });
+
+  describe('getUploadProgress', () => {
+    const draft = {
+      status: VideoStatus.DRAFT,
+      declared_size: 33554433,
+      source_key: 'internal-id/source',
+      upload_id: 'upload-id',
+    };
+
+    function storedPart(partNumber: number) {
+      return { partNumber, etag: `"etag-${partNumber}"`, size: 16777216 };
+    }
+
+    it.each([VideoStatus.PROCESSING, VideoStatus.READY, VideoStatus.ERROR])(
+      'should refuse a video in %s, without consulting the storage',
+      async (status) => {
+        videoRepository.findOne.mockResolvedValue({ ...draft, status });
+
+        await expect(
+          service.getUploadProgress('public-id', USER_ID),
+        ).rejects.toBeInstanceOf(VideoUploadClosedException);
+
+        expect(storageService.listParts).not.toHaveBeenCalled();
+      },
+    );
+
+    it('should report every part as missing when nothing reached the storage', async () => {
+      videoRepository.findOne.mockResolvedValue(draft);
+      storageService.listParts.mockResolvedValue([]);
+
+      await expect(
+        service.getUploadProgress('public-id', USER_ID),
+      ).resolves.toEqual({
+        part_size: 16777216,
+        part_count: 3,
+        uploaded_parts: [],
+        missing_part_numbers: [1, 2, 3],
+      });
+      expect(storageService.listParts).toHaveBeenCalledWith(
+        'internal-id/source',
+        'upload-id',
+      );
+    });
+
+    it('should report only the parts that did not reach the storage, also in the middle', async () => {
+      videoRepository.findOne.mockResolvedValue(draft);
+      storageService.listParts.mockResolvedValue([
+        storedPart(1),
+        storedPart(3),
+      ]);
+
+      const progress = await service.getUploadProgress('public-id', USER_ID);
+
+      expect(progress.uploaded_parts).toEqual([
+        { part_number: 1, etag: '"etag-1"' },
+        { part_number: 3, etag: '"etag-3"' },
+      ]);
+      expect(progress.missing_part_numbers).toEqual([2]);
+    });
+
+    it('should report nothing missing when every part reached the storage', async () => {
+      videoRepository.findOne.mockResolvedValue(draft);
+      storageService.listParts.mockResolvedValue([
+        storedPart(1),
+        storedPart(2),
+        storedPart(3),
+      ]);
+
+      const progress = await service.getUploadProgress('public-id', USER_ID);
+
+      expect(progress.missing_part_numbers).toEqual([]);
     });
   });
 

@@ -1,7 +1,7 @@
 # phase-03-videos — Progress
 
 **Status:** in_progress
-**SIs:** 12/18 completed
+**SIs:** 13/18 completed
 
 ### SI-03.1 — Infra: Redis, MinIO e FFmpeg no Compose
 - **Status:** completed
@@ -126,9 +126,13 @@
   - Não provado: a expiração real da URL, porque os testes conferem `expires_at` sem esperar 1h.
 
 ### SI-03.12 — Endpoint GET /videos/{publicId}/parts
-- **Status:** pending
-- **Tests:** no tests
-- **Observations:** none
+- **Status:** completed
+- **Tests:** 46 passing (5 do e2e da spec, 6 do e2e de `videos-parts-sign` e 35 de `VideosService`, sendo 25 unitários e 10 de integração)
+- **Observations:**
+  - O `etag` de `uploaded_parts` é igual ao header `ETag` que o cliente recebe no `PUT`, com as aspas, conforme o teste de integração no MinIO. Um cliente que perdeu a própria lista pode usá-lo sem converter o formato.
+  - `missing_part_numbers` é calculado de 1 até `part_count`, sem depender da ordem do `ListParts`.
+  - A exigência de `draft` foi para `findOwnedDraft`, usado por `signParts` e `getUploadProgress`, sem mudar o comportamento de `signParts`.
+  - Não provado: a resposta com mais de uma página de `ListParts` por este endpoint. Um vídeo tem no máximo 640 partes, e a página é de 1.000. A paginação foi provada na SI-03.4, no `StorageService`.
 
 ### SI-03.13 — Endpoint POST /videos/{publicId}/complete
 - **Status:** pending
