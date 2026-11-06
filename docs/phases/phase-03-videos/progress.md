@@ -1,7 +1,7 @@
 # phase-03-videos — Progress
 
 **Status:** in_progress
-**SIs:** 7/18 completed
+**SIs:** 8/18 completed
 
 ### SI-03.1 — Infra: Redis, MinIO e FFmpeg no Compose
 - **Status:** completed
@@ -72,9 +72,15 @@
   - Não provados: a leitura parcial por `Range` em arquivo grande, porque os vídeos de teste são pequenos; o valor de 60 s do `-rw_timeout`, medido só com 3 s; e, pelo serviço, formatos além de `mp4`, `matroska` e `mpegts`, porque os demais foram medidos uma vez, direto nos comandos.
 
 ### SI-03.7 — Processamento do vídeo no worker
-- **Status:** pending
-- **Tests:** no tests
-- **Observations:** none
+- **Status:** completed
+- **Tests:** 13 passing (8 de integração com Postgres, MinIO e FFmpeg reais + 4 unitários + 1 de compilação do `WorkerModule`)
+- **Observations:**
+  - Jobs reais no `video-worker` em execução, com `attempts: 3` e backoff exponencial de 30 s: vídeo válido termina em `completed` com `attemptsMade=1`, `ready` e thumbnail legível; arquivo de texto e `videoId` inexistente terminam em `failed` com `attemptsMade=1`, sem repetir; objeto ausente no storage (`404`) termina em `failed` com `attemptsMade=3`, passando duas vezes por `delayed`, e o evento `retries-exhausted`.
+  - Recuperação de job travado provada: com o MinIO pausado para prender o `ffprobe`, `pkill -9` no worker com o job `active`. O container voltou, e o job seguiu `active > waiting > stalled > active > completed`, com `stalledCounter=1`, `attemptsStarted=2`, `attemptsMade=1` e `status` igual a `ready`. O travamento não consome tentativa.
+  - Até a SI-03.8, um job em `failed` deixa o vídeo em `processing`; isso foi observado nos jobs de arquivo inválido e de objeto ausente.
+  - Um `videoId` que não é UUID não vira `UnrecoverableError`: o Postgres responde `invalid input syntax for type uuid`, e o job termina em `failed` depois de 3 tentativas. A API só enfileira o `id` do vídeo, que é UUID.
+  - Job com falha não aparece em `docker compose logs video-worker`: o motivo só fica em `failedReason`, no Redis.
+  - Não provados: dois travamentos seguidos, que levam o job a `failed` por exceder `maxStalledCount`; e o diretório temporário numa queda durante `extractThumbnail`, que pode ficar no `/tmp` do container, porque o `finally` não roda e o reinício preserva o sistema de arquivos.
 
 ### SI-03.8 — Registro da falha no `status`
 - **Status:** pending

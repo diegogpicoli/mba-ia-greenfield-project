@@ -17,6 +17,10 @@ export const MEDIA_STDERR_MAX_LENGTH = 4096;
 
 export const THUMBNAIL_POSITION_RATIO = 0.1;
 
+export const THUMBNAIL_FILE_NAME = 'thumbnail.jpg';
+
+export const THUMBNAIL_TEMP_DIR_PREFIX = 'video-thumbnail-';
+
 export const REJECTED_FILE_STDERR_MARKERS = [
   'Invalid data found when processing input',
   'not on whitelist',

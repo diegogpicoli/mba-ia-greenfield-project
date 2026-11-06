@@ -10,6 +10,9 @@ import storageConfig from './config/storage.config';
 import { StorageModule } from './storage/storage.module';
 import { User } from './users/entities/user.entity';
 import { Video } from './videos/entities/video.entity';
+import { VideoMediaService } from './videos/video-media.service';
+import { VideoProcessingService } from './videos/video-processing.service';
+import { VideoProcessor } from './videos/video.processor';
 import { VIDEO_PROCESSING_QUEUE } from './videos/videos.constants';
 
 @Module({
@@ -43,5 +46,6 @@ import { VIDEO_PROCESSING_QUEUE } from './videos/videos.constants';
     BullModule.registerQueue({ name: VIDEO_PROCESSING_QUEUE }),
     StorageModule,
   ],
+  providers: [VideoMediaService, VideoProcessingService, VideoProcessor],
 })
 export class WorkerModule {}
