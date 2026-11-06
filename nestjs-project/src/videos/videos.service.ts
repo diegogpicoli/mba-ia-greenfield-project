@@ -5,14 +5,18 @@ import { Repository } from 'typeorm';
 import { ChannelsService } from '../channels/channels.service';
 import { isPgUniqueViolationOnColumn } from '../common/database/pg-errors';
 import {
+  UploadPartOutOfRangeException,
   VideoNotFoundException,
   VideoTooLargeException,
+  VideoUploadClosedException,
 } from '../common/exceptions/domain.exception';
 import { StorageService } from '../storage/storage.service';
 import type { CreateVideoDto } from './dto/create-video.dto';
 import type { CreatedVideoResponseDto } from './dto/created-video-response.dto';
+import type { SignPartsDto } from './dto/sign-parts.dto';
+import type { SignedPartsResponseDto } from './dto/signed-parts-response.dto';
 import type { VideoResponseDto } from './dto/video-response.dto';
-import { Video } from './entities/video.entity';
+import { Video, VideoStatus } from './entities/video.entity';
 import {
   PUBLIC_ID_BYTES,
   PUBLIC_ID_COLUMN,
@@ -21,6 +25,10 @@ import {
   VIDEO_PART_SIZE_BYTES,
   VIDEO_SOURCE_FILE_NAME,
 } from './videos.constants';
+
+function partCountOf(declaredSize: number): number {
+  return Math.ceil(declaredSize / VIDEO_PART_SIZE_BYTES);
+}
 
 @Injectable()
 export class VideosService {
@@ -61,7 +69,7 @@ export class VideosService {
       original_filename: video.original_filename,
       declared_size: video.declared_size,
       part_size: VIDEO_PART_SIZE_BYTES,
-      part_count: Math.ceil(video.declared_size / VIDEO_PART_SIZE_BYTES),
+      part_count: partCountOf(video.declared_size),
       created_at: video.created_at,
       updated_at: video.updated_at,
     };
@@ -79,6 +87,39 @@ export class VideosService {
       throw new VideoNotFoundException();
     }
     return video;
+  }
+
+  async signParts(
+    publicId: string,
+    userId: string,
+    dto: SignPartsDto,
+  ): Promise<SignedPartsResponseDto> {
+    const video = await this.findOwned(publicId, userId);
+    if (video.status !== VideoStatus.DRAFT) {
+      throw new VideoUploadClosedException();
+    }
+    const partCount = partCountOf(video.declared_size);
+    if (dto.part_numbers.some((partNumber) => partNumber > partCount)) {
+      throw new UploadPartOutOfRangeException();
+    }
+    const signed = await Promise.all(
+      dto.part_numbers.map((partNumber) =>
+        this.storageService.signUploadPart(
+          video.source_key,
+          video.upload_id,
+          partNumber,
+        ),
+      ),
+    );
+    return {
+      parts: signed.map(({ url }, index) => ({
+        part_number: dto.part_numbers[index],
+        url,
+      })),
+      expires_at: new Date(
+        Math.min(...signed.map(({ expiresAt }) => expiresAt.getTime())),
+      ),
+    };
   }
 
   private toResponse(video: Video): VideoResponseDto {

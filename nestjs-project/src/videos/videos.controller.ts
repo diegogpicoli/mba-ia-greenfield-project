@@ -1,4 +1,12 @@
-import { Body, Controller, Get, Param, Post } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Param,
+  Post,
+} from '@nestjs/common';
 import {
   ApiBearerAuth,
   ApiOperation,
@@ -13,6 +21,8 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { ApiErrorEnvelope } from '../common/openapi/api-error-envelope.dto';
 import { CreateVideoDto } from './dto/create-video.dto';
 import { CreatedVideoResponseDto } from './dto/created-video-response.dto';
+import { SignPartsDto } from './dto/sign-parts.dto';
+import { SignedPartsResponseDto } from './dto/signed-parts-response.dto';
 import { VideoResponseDto } from './dto/video-response.dto';
 import { VideosService } from './videos.service';
 
@@ -84,5 +94,47 @@ export class VideosController {
     @Param('publicId') publicId: string,
   ): Promise<VideoResponseDto> {
     return this.videosService.getOwned(publicId, user.sub);
+  }
+
+  @Post(':publicId/parts/sign')
+  @HttpCode(HttpStatus.OK)
+  @ApiBearerAuth('access-token')
+  @ApiOperation({
+    summary: 'Sign upload parts',
+    description:
+      'Returns presigned URLs valid for 1 hour. The client sends each part with a PUT on its URL and keeps the ETag header of the response.',
+  })
+  @ApiParam({ name: 'publicId', description: 'Public id of the video' })
+  @ApiResponse({
+    status: 200,
+    description: 'The presigned URLs of the requested parts',
+    type: SignedPartsResponseDto,
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Validation failed, or a part number exceeds the part count',
+    schema: { $ref: getSchemaPath(ApiErrorEnvelope) },
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'Missing or invalid access token',
+    schema: { $ref: getSchemaPath(ApiErrorEnvelope) },
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'The video does not exist or belongs to another channel',
+    schema: { $ref: getSchemaPath(ApiErrorEnvelope) },
+  })
+  @ApiResponse({
+    status: 409,
+    description: 'The video is no longer a draft',
+    schema: { $ref: getSchemaPath(ApiErrorEnvelope) },
+  })
+  async signParts(
+    @CurrentUser() user: JwtPayload,
+    @Param('publicId') publicId: string,
+    @Body() dto: SignPartsDto,
+  ): Promise<SignedPartsResponseDto> {
+    return this.videosService.signParts(publicId, user.sub, dto);
   }
 }

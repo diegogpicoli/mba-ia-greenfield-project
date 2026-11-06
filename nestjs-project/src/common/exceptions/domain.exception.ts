@@ -61,6 +61,18 @@ export class VideoTooLargeException extends DomainException {
   }
 }
 
+export class VideoUploadClosedException extends DomainException {
+  constructor() {
+    super('VIDEO_UPLOAD_CLOSED', 409, 'Video upload is already closed');
+  }
+}
+
+export class UploadPartOutOfRangeException extends DomainException {
+  constructor() {
+    super('UPLOAD_PART_OUT_OF_RANGE', 400, 'Part number is out of range');
+  }
+}
+
 export class UploadNotFoundException extends DomainException {
   constructor() {
     super('UPLOAD_NOT_FOUND', 409, 'Multipart upload not found');

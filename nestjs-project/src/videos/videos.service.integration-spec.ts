@@ -15,6 +15,7 @@ import {
   cleanAllTables,
   createTestDataSource,
 } from '../test/create-test-data-source';
+import { presignedRequest } from '../test/presigned-request';
 import { User } from '../users/entities/user.entity';
 import { Video, VideoStatus } from './entities/video.entity';
 import { VideosService } from './videos.service';
@@ -118,6 +119,43 @@ describe('VideosService (integration)', () => {
     expect(response).not.toHaveProperty('upload_id');
     expect(response).not.toHaveProperty('source_key');
     expect(response).not.toHaveProperty('channel_id');
+  });
+
+  describe('signParts', () => {
+    it('should sign URLs that the real MinIO accepts, and the part appears in the listing', async () => {
+      const { user } = await createUserWithChannel();
+      const { public_id } = await service.createDraft(user.id, DTO);
+
+      const { parts } = await service.signParts(public_id, user.id, {
+        part_numbers: [1],
+      });
+
+      const response = await presignedRequest(parts[0].url, {
+        method: 'PUT',
+        body: Buffer.from('part content'),
+      });
+      expect(response.status).toBe(200);
+      expect(response.headers.etag).toBeTruthy();
+      const video = await videoRepository.findOneByOrFail({ public_id });
+      const listed = await storage.listParts(video.source_key, video.upload_id);
+      expect(listed.map(({ partNumber }) => partNumber)).toEqual([1]);
+    });
+
+    it('should sign the 640 parts of a video of 10 GiB', async () => {
+      const { user } = await createUserWithChannel();
+      const { public_id } = await service.createDraft(user.id, {
+        ...DTO,
+        declared_size: 10737418240,
+      });
+      const numbers = Array.from({ length: 640 }, (_, index) => index + 1);
+
+      const { parts } = await service.signParts(public_id, user.id, {
+        part_numbers: numbers,
+      });
+
+      expect(parts.map(({ part_number }) => part_number)).toEqual(numbers);
+      expect(new Set(parts.map(({ url }) => url)).size).toBe(640);
+    });
   });
 
   describe('findOwned', () => {

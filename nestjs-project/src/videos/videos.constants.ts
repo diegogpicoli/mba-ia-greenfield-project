@@ -8,6 +8,10 @@ export const VIDEO_PART_SIZE_BYTES = 16 * 1024 * 1024;
 
 export const VIDEO_MAX_SIZE_BYTES = 10737418240;
 
+export const VIDEO_MAX_PART_COUNT = Math.ceil(
+  VIDEO_MAX_SIZE_BYTES / VIDEO_PART_SIZE_BYTES,
+);
+
 export const VIDEO_SOURCE_FILE_NAME = 'source';
 
 export const PUBLIC_ID_BYTES = 8;

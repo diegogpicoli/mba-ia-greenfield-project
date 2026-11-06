@@ -1,7 +1,7 @@
 # phase-03-videos — Progress
 
 **Status:** in_progress
-**SIs:** 11/18 completed
+**SIs:** 12/18 completed
 
 ### SI-03.1 — Infra: Redis, MinIO e FFmpeg no Compose
 - **Status:** completed
@@ -117,9 +117,13 @@
   - Não provado aqui: `thumbnail_url` apontando para um objeto real, porque o e2e grava `ready` direto na linha. A prova fica para a SI-03.16.
 
 ### SI-03.11 — Endpoint POST /videos/{publicId}/parts/sign
-- **Status:** pending
-- **Tests:** no tests
-- **Observations:** none
+- **Status:** completed
+- **Tests:** 44 passing (6 do e2e da spec, 11 dos e2e de `videos-get` e `videos-create` e 27 de `VideosService`, sendo 19 unitários e 8 de integração)
+- **Observations:**
+  - `expires_at` é a menor validade entre as URLs assinadas no lote, porque cada assinatura calcula a sua.
+  - O limite de 640 itens vem de `VIDEO_MAX_PART_COUNT`, derivado de `VIDEO_MAX_SIZE_BYTES` e `VIDEO_PART_SIZE_BYTES`. Assinar as 640 partes de um vídeo de 10 GiB levou 336 ms no teste de integração.
+  - A verificação de faixa roda antes de assinar, então uma lista com um número fora de `part_count` não assina nenhuma parte.
+  - Não provado: a expiração real da URL, porque os testes conferem `expires_at` sem esperar 1h.
 
 ### SI-03.12 — Endpoint GET /videos/{publicId}/parts
 - **Status:** pending

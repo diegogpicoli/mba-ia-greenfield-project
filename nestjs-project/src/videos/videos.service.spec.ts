@@ -3,8 +3,10 @@ import { getRepositoryToken } from '@nestjs/typeorm';
 import { QueryFailedError } from 'typeorm';
 import { ChannelsService } from '../channels/channels.service';
 import {
+  UploadPartOutOfRangeException,
   VideoNotFoundException,
   VideoTooLargeException,
+  VideoUploadClosedException,
 } from '../common/exceptions/domain.exception';
 import { StorageService } from '../storage/storage.service';
 import { Video, VideoStatus } from './entities/video.entity';
@@ -40,6 +42,7 @@ describe('VideosService', () => {
   const storageService = {
     createMultipartUpload: jest.fn(),
     getThumbnailUrl: jest.fn(),
+    signUploadPart: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -136,6 +139,83 @@ describe('VideosService', () => {
       await expect(
         service.getOwned('public-id-1', USER_ID),
       ).rejects.toBeInstanceOf(VideoNotFoundException);
+    });
+  });
+
+  describe('signParts', () => {
+    const draft = {
+      status: VideoStatus.DRAFT,
+      declared_size: 20971520,
+      source_key: 'internal-id/source',
+      upload_id: 'upload-id',
+    };
+
+    it.each([VideoStatus.PROCESSING, VideoStatus.READY, VideoStatus.ERROR])(
+      'should refuse a video in %s',
+      async (status) => {
+        videoRepository.findOne.mockResolvedValue({ ...draft, status });
+
+        await expect(
+          service.signParts('public-id', USER_ID, { part_numbers: [1] }),
+        ).rejects.toBeInstanceOf(VideoUploadClosedException);
+
+        expect(storageService.signUploadPart).not.toHaveBeenCalled();
+      },
+    );
+
+    it('should refuse a number above part_count, without signing any part', async () => {
+      videoRepository.findOne.mockResolvedValue(draft);
+
+      await expect(
+        service.signParts('public-id', USER_ID, { part_numbers: [1, 3] }),
+      ).rejects.toBeInstanceOf(UploadPartOutOfRangeException);
+
+      expect(storageService.signUploadPart).not.toHaveBeenCalled();
+    });
+
+    it('should accept the last part and keep each URL with its number', async () => {
+      videoRepository.findOne.mockResolvedValue(draft);
+      storageService.signUploadPart.mockImplementation(
+        (_key: string, _uploadId: string, partNumber: number) =>
+          Promise.resolve({
+            url: `http://storage/${partNumber}`,
+            expiresAt: new Date('2026-11-06T11:00:00Z'),
+          }),
+      );
+
+      const response = await service.signParts('public-id', USER_ID, {
+        part_numbers: [2, 1],
+      });
+
+      expect(response.parts).toEqual([
+        { part_number: 2, url: 'http://storage/2' },
+        { part_number: 1, url: 'http://storage/1' },
+      ]);
+      expect(storageService.signUploadPart).toHaveBeenCalledWith(
+        'internal-id/source',
+        'upload-id',
+        2,
+      );
+    });
+
+    it('should report the earliest expiration among the signed URLs', async () => {
+      videoRepository.findOne.mockResolvedValue(draft);
+      const earliest = new Date('2026-11-06T11:00:00Z');
+      storageService.signUploadPart
+        .mockResolvedValueOnce({
+          url: 'http://storage/1',
+          expiresAt: new Date('2026-11-06T11:00:01Z'),
+        })
+        .mockResolvedValueOnce({
+          url: 'http://storage/2',
+          expiresAt: earliest,
+        });
+
+      const response = await service.signParts('public-id', USER_ID, {
+        part_numbers: [1, 2],
+      });
+
+      expect(response.expires_at).toEqual(earliest);
     });
   });
 
