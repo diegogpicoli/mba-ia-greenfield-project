@@ -1,7 +1,7 @@
 ---
 scope_type: phase
 related_phases: [3]
-status: pending
+status: decided
 date: 2026-11-05
 scope_description: "Backend da Fase 03: fila de processamento, upload de até 10GB, uso do object storage S3 compatível (MinIO em Docker), execução do worker FFmpeg/ffprobe, URL única, streaming e download, ciclo de status do vídeo e tratamento de falhas."
 ---
@@ -54,7 +54,8 @@ _Decisões anteriores que restringem as opções:_
 
 **Recommendation:** **Option A (BullMQ + Redis)** — Entrega sem código próprio o que o TD-10 precisa (retry com backoff, `UnrecoverableError`, detecção de job travado, deduplicação por `jobId`) e já é a referência da skill e do guia de testes do repo; o custo real é um container com estado a mais, que as opções sobre PostgreSQL evitariam, mas elas perdem a integração oficial com NestJS sem ganho relevante neste volume. Versões: `bullmq@^6`, `ioredis` explícito e `@nestjs/bullmq@11.0.5`, a última da linha 11, em CommonJS e com peer de `bullmq ^6` e Nest 11 (a `12.0.0` é só ESM). Serviço `redis` com imagem `redis:8.8`, `maxmemory-policy noeviction` e AOF ligado. Chaves `REDIS_HOST=redis` e `REDIS_PORT=6379` no schema Joi, em `.env.example` e no Compose. Na implementação, atualizar o `TBD` da Message Queue na descrição do `CLAUDE.md`.
 
-**Decision:** _[pending]_
+**Decision:** A (BullMQ + Redis)
+**Libraries:** `bullmq@^6`, `ioredis`, `@nestjs/bullmq@11.0.5`
 
 ---
 
@@ -88,7 +89,13 @@ _Decisões anteriores que restringem as opções:_
 
 **Recommendation:** **Option A (S3 Multipart pré-assinado)** — É a única opção que atende ao mesmo tempo "sem impacto na performance" e a retomada da seção 4 sem violar o BFF estrito; perde-se simplicidade no cliente, que fica com o fatiamento e o retry. Parâmetros do contrato: a API define o tamanho de parte (16 MiB, ou 640 partes em 10 GiB) e assina em lotes com validade de 1h; o limite de 10 GiB (10.737.418.240 bytes) é checado no início pelo tamanho declarado e de novo em `complete` pela soma do `ListParts`, abortando o upload se exceder; `complete` é idempotente e usa os ETags do `ListParts`, então o cliente não depende de ler o header `ETag`; o `upload_id` fica só no banco. O `S3Client` usa `requestChecksumCalculation: 'WHEN_REQUIRED'`, porque o padrão do SDK v3 (`WHEN_SUPPORTED`) embute CRC32 nas URLs de `UploadPart` (comportamento confirmado no código do SDK, ainda não testado contra o MinIO). O MinIO não suporta a regra de lifecycle `AbortIncompleteMultipartUpload` e expira uploads incompletos por `MINIO_API_STALE_UPLOADS_EXPIRY` (padrão 24h); como 10 GiB a 1 Mbit/s levam cerca de 24h, o Compose deve subir esse prazo para 7 dias. Na implementação, atualizar a descrição da API no `CLAUDE.md`.
 
-**Decision:** _[pending]_
+**Decision:** A (S3 Multipart pré-assinado)
+**Libraries:** `@aws-sdk/client-s3`, `@aws-sdk/s3-request-presigner`
+
+**Revisions:**
+- 2026-11-05 — `complete` passa a receber do cliente a lista de `part_number` e `ETag`, e o `ListParts` fica só para verificar. Rationale: a AWS manda não montar o `complete` com a listagem, que omite parte em envio e poderia gerar vídeo truncado sem erro.
+  A verificação confere partes 1..N, ETags e soma igual ao tamanho declarado; N é o teto do tamanho declarado dividido por 16 MiB, e o `ListParts` precisa ser paginado. Divergência responde erro sem abortar o upload, para o cliente reenviar, e exceder 10 GiB continua abortando. `CompleteMultipartUpload` usa a lista do cliente, e repetir o `complete` continua seguro. O cliente passa a ler o header `ETag`; em navegador isso depende de CORS, a conferir na fase que trouxer tela, já que a interface está fora desta fase. Esta revisão prevalece sobre o trecho da Recommendation que usa os ETags do `ListParts`.
+- 2026-11-06 — Repetir o `complete` em `draft` com `NoSuchUpload` confere o objeto com `HeadObject` e segue se o tamanho bater; no JSON, o campo é `etag`. Rationale: cobre a queda entre fechar o multipart e gravar `processing`; o nome segue o snake_case do resto da API, e o header HTTP continua `ETag`.
 
 ---
 
@@ -119,7 +126,8 @@ _Decisões anteriores que restringem as opções:_
 
 **Recommendation:** **Option A (dois buckets)** — Separa o risco dos vídeos da conveniência das thumbnails, ao custo de provisionar um bucket a mais e aceitar thumbnail de rascunho legível por quem tiver a URL. As chaves usam o UUID interno, nunca o ID público (TD-07) nem o nome do arquivo: assim não há texto do usuário na chave e reprocessar sobrescreve o mesmo objeto; o nome original fica no banco e só aparece no `Content-Disposition`. Não usar `mc anonymous set download`, que mapeia para a política `readonly` e inclui `s3:ListBucket`, expondo a lista de UUIDs de todos os vídeos. O provisionamento é idempotente via SDK (`CreateBucket` + `PutBucketPolicy` só com `s3:GetObject`), já que a imagem `minio/mc` também saiu do Docker Hub (TD-04). Endpoints: `S3_ENDPOINT=http://minio:9000` para as chamadas entre containers e `S3_PUBLIC_ENDPOINT=http://localhost:9000` apenas para assinar URLs destinadas ao navegador e montar URLs de thumbnail, sempre com `forcePathStyle: true`. Isso não viola a regra de rede do `CLAUDE.md`, porque nenhum container conecta nesse endereço: `getSignedUrl` calcula a assinatura sem acessar a rede. O worker assina com o endpoint interno. Chaves no schema Joi, em `.env.example` e no Compose: `S3_ENDPOINT`, `S3_PUBLIC_ENDPOINT`, `S3_REGION`, `S3_ACCESS_KEY`, `S3_SECRET_KEY`, `S3_BUCKET_VIDEOS` e `S3_BUCKET_THUMBNAILS`. Os testes de integração usam o MinIO real do Compose, em vez do filesystem local descrito em `testing-guide-nestjs-project/references/external-systems.md`, porque multipart pré-assinado não existe nesse adaptador e o enunciado manda não mockar o que dá para testar com a infra do Compose.
 
-**Decision:** _[pending]_
+**Decision:** A (dois buckets)
+**Libraries:** `@aws-sdk/client-s3`
 
 ---
 
@@ -150,7 +158,7 @@ _Decisões anteriores que restringem as opções:_
 
 **Recommendation:** **Option A (build do fonte em commit fixo)** — Mantém a premissa de usar MinIO sem introduzir binário de terceiros e segue o caminho indicado pelo próprio projeto; o build foi testado em container descartável e gerou o binário em 130 s, sem cache de módulos. Perde-se tempo no primeiro `docker compose up` e correções futuras, então o código congelado serve para desenvolvimento e testes, e a Fase 07 (ambiente de produção) precisa reavaliar a origem do storage. Como a aplicação só conhece o contrato S3 (TD-03), trocar para a Option B depois exige mudar apenas o serviço no Compose, inclusive se o tempo de build atrapalhar quem for avaliar o projeto.
 
-**Decision:** _[pending]_
+**Decision:** A (build do fonte em commit fixo)
 
 ---
 
@@ -181,7 +189,11 @@ _Decisões anteriores que restringem as opções:_
 
 **Recommendation:** **Option A (mesmo código, container próprio)** — Isola o custo de CPU da API e segue o diagrama sem duplicar entidades nem config; o preço é a disciplina de não carregar o processor na API e um `outDir` próprio para o worker em desenvolvimento. O `WorkerModule` importa só TypeORM, storage e o processor, e `AppModule` nunca o importa. O FFmpeg roda como processo filho via `spawn`, então o event loop fica livre para renovar o lock do BullMQ (padrão de 30 s) e o processor sandboxed não é necessário. A imagem do worker acrescenta `ffmpeg` por `apt`, seguindo o `Dockerfile.dev` atual. O worker começa a consumir sozinho no `docker compose up`, sem `docker compose exec`: o `command` do serviço substitui o `tail -f /dev/null` do `Dockerfile.dev`, roda `npm install` em um `node_modules` próprio, num volume, para funcionar em clone novo sem disputar com o da API, e inicia `src/worker.ts`; ao subir o contexto, o `BullRegistrar` registra o `@Processor` no `onModuleInit` e o consumo começa. `depends_on` com healthcheck de `db`, `redis` e `minio` garante a ordem, e `restart: unless-stopped` traz o worker de volta após uma queda, quando o BullMQ recupera o job travado. A regra do `nestjs-project/CLAUDE.md` de não iniciar a aplicação sem pedido trata do servidor HTTP e não é afetada, porque o worker não abre porta.
 
-**Decision:** _[pending]_
+**Decision:** A (mesmo código, container próprio)
+
+**Revisions:**
+- 2026-11-06 — `ffmpeg` entra no `Dockerfile.dev`, compartilhado por API e worker, e o `@QueueEventsListener` fica no processo do worker, junto do processor. Rationale: o `npm test` roda em `nestjs-api` e precisa do `ffmpeg`; a API continua sem chamá-lo, porque o processor não carrega nela.
+  Esta revisão prevalece sobre o trecho da opção que diz que a imagem da API segue sem FFmpeg.
 
 ---
 
@@ -212,7 +224,8 @@ _Decisões anteriores que restringem as opções:_
 
 **Recommendation:** **Option A (`spawn` com URL pré-assinada)** — O custo do job deixa de crescer com o arquivo, o que importa com 10GB, e não entra dependência sem manutenção; perde-se a tolerância do arquivo local, e o job passa a depender da rede até o storage. Entrada por stdin fica descartada, porque sem seek um MP4 com o índice no fim não abre. Como o padrão do FFmpeg libera todos os protocolos, os dois comandos usam `-protocol_whitelist http,https,tcp,tls`, impedindo que uma playlist enviada como vídeo leia arquivos locais; os argumentos vão em array, sem shell. O frame é tirado em torno de 10% da duração, com recuo para o primeiro frame em vídeos muito curtos. Ficam salvos duração, largura, altura, codecs, bitrate e container. A classificação de erros está no TD-10.
 
-**Decision:** _[pending]_
+**Decision:** A (`spawn` com URL pré-assinada)
+**Libraries:** `ffmpeg`
 
 ---
 
@@ -248,7 +261,7 @@ _Decisões anteriores que restringem as opções:_
 
 **Recommendation:** **Option A (base64url aleatório com `UNIQUE`)** — Atende a "curta", "nunca conflita" e "não enumerável" sem dependência nova, reaproveitando o padrão de retry que o repo já tem; o que se perde é o alfabeto customizável do `nanoid`, sem efeito prático aqui. O identificador é gerado no pré-cadastro (TD-02), para existir desde o rascunho, e é imutável. O storage nunca usa esse valor (TD-03), então a URL pública fica desacoplada das chaves.
 
-**Decision:** _[pending]_
+**Decision:** A (base64url aleatório com `UNIQUE`)
 
 ---
 
@@ -282,7 +295,11 @@ _Decisões anteriores que restringem as opções:_
 
 **Recommendation:** **Option A (URL pré-assinada com HTTP Range)** — Entrega streaming e download sem colocar bytes de vídeo no BFF ou na API e sem transcodificação fora do escopo; perde-se qualidade adaptativa e a garantia de reprodução em qualquer navegador. A URL vale 6h, e o cliente pede outra ao receber 403. O `Content-Type` é gravado no `CreateMultipartUpload`, e o nome original entra só no `Content-Disposition` do download. Só vídeos `ready` recebem URL. Não há publicação nesta fase e o acesso anônimo é bullet da Fase 05, então a API entrega URL apenas ao dono autenticado, e a Fase 05 abre a rota.
 
-**Decision:** _[pending]_
+**Decision:** A (URL pré-assinada com HTTP Range)
+**Libraries:** `@aws-sdk/s3-request-presigner`
+
+**Revisions:**
+- 2026-11-06 — O campo da resposta se chama `expires_at`, no lugar do `expiresAt` da opção. Rationale: snake_case, como o resto da API.
 
 ---
 
@@ -318,7 +335,7 @@ _Decisões anteriores que restringem as opções:_
 
 **Recommendation:** **Option D (coluna única no ciclo do enunciado)** — É o ciclo que o enunciado pede, nasce rascunho como o plano exige e não antecipa nada da Fase 04; não há impedimento concreto, porque a retomada do upload usa o `ListParts` e não o status, e o custo é a Fase 04 precisar definir depois como representar a publicação. Os valores ficam em inglês, como os demais enums do código. Transições: `POST /videos` cria com `draft`; `complete` fecha o multipart, enfileira com `jobId = videoId` e só então grava `processing`, de modo que repetir a chamada é seguro; o worker grava `ready` junto com metadados e thumbnail, ou `error` (TD-10). A API expõe `status` no recurso do vídeo, para consulta por polling.
 
-**Decision:** _[pending]_
+**Decision:** D (coluna única no ciclo do enunciado)
 
 ---
 
@@ -349,7 +366,12 @@ _Decisões anteriores que restringem as opções:_
 
 **Recommendation:** **Option A (retries limitados, preservando o original)** — Absorve falhas transitórias sem pedir novo upload de 10GB e falha rápido quando o arquivo é o problema; perde-se espaço em storage enquanto vídeos falhos existirem. Backoff exponencial com semente de 30 s. Falha permanente: `ffprobe` rejeita o arquivo ou não há stream de vídeo. O job é idempotente, porque reescreve a mesma chave de thumbnail e a mesma linha no banco. O status `error` é gravado por `QueueEvents` (`@QueueEventsListener`), cujo evento `failed` sempre traz o `jobId`, igual ao `videoId`; o evento `failed` do `Worker` não basta, porque o `job` pode vir indefinido quando um job travado estoura o limite. Reprocessar por endpoint não está em nenhum bullet da fase, então não entra aqui; preservar o original deixa essa porta aberta.
 
-**Decision:** _[pending]_
+**Decision:** A (retries limitados, preservando o original)
+**Libraries:** `bullmq`
+
+**Revisions:**
+- 2026-11-05 — O `failure_code` da Option A não entra, e a falha fica registrada só pelo status `error`. Rationale: o enunciado não o pede e manda não inventar requisitos, e a justificativa era o painel da Fase 04.
+- 2026-11-06 — O listener usa `lastEventId: '0-0'` para reler os eventos retidos ao subir, e grava `error` só `WHERE id = jobId AND status IN ('draft', 'processing')`. Rationale: um `failed` emitido com o processo fora do ar não se perde, e reler é seguro porque o `jobId` é único por vídeo e não há reprocessamento nesta fase; o `draft` entra porque o worker pode falhar antes de a API gravar `processing`.
 
 ---
 
@@ -357,16 +379,16 @@ _Decisões anteriores que restringem as opções:_
 
 | ID | Scope | Decision | Recommendation | Choice |
 |----|-------|----------|---------------|--------|
-| TD-01 | Backend | Tecnologia da fila de processamento | A: BullMQ + Redis (`@nestjs/bullmq`) | _[pending]_ |
-| TD-02 | Cross-layer | Estratégia de upload de até 10GB | A: S3 Multipart com URLs pré-assinadas | _[pending]_ |
-| TD-03 | Backend | Organização de buckets, chaves e endpoints | A: Dois buckets, vídeos privados e thumbnails com leitura anônima | _[pending]_ |
-| TD-04 | Repo-wide | Origem da imagem Docker do MinIO | A: Build local do fonte oficial, em commit fixo | _[pending]_ |
-| TD-05 | Backend | Como o worker roda | A: Mesmo código, segundo entrypoint e container próprio | _[pending]_ |
-| TD-06 | Backend | Extração de metadados e thumbnail | A: `spawn` de `ffprobe`/`ffmpeg` por URL pré-assinada | _[pending]_ |
-| TD-07 | Backend | Estratégia de URL única | A: 8 bytes aleatórios em base64url, com `UNIQUE` e retry | _[pending]_ |
-| TD-08 | Cross-layer | Estratégia de streaming e download | A: URL pré-assinada com HTTP Range | _[pending]_ |
-| TD-09 | Backend | Ciclo de status do vídeo | D: Coluna única `status` (`draft` → `processing` → `ready` ou `error`) | _[pending]_ |
-| TD-10 | Backend | Falha no processamento | A: Retries limitados, preservando o original | _[pending]_ |
+| TD-01 | Backend | Tecnologia da fila de processamento | A: BullMQ + Redis (`@nestjs/bullmq`) | A |
+| TD-02 | Cross-layer | Estratégia de upload de até 10GB | A: S3 Multipart com URLs pré-assinadas | A |
+| TD-03 | Backend | Organização de buckets, chaves e endpoints | A: Dois buckets, vídeos privados e thumbnails com leitura anônima | A |
+| TD-04 | Repo-wide | Origem da imagem Docker do MinIO | A: Build local do fonte oficial, em commit fixo | A |
+| TD-05 | Backend | Como o worker roda | A: Mesmo código, segundo entrypoint e container próprio | A |
+| TD-06 | Backend | Extração de metadados e thumbnail | A: `spawn` de `ffprobe`/`ffmpeg` por URL pré-assinada | A |
+| TD-07 | Backend | Estratégia de URL única | A: 8 bytes aleatórios em base64url, com `UNIQUE` e retry | A |
+| TD-08 | Cross-layer | Estratégia de streaming e download | A: URL pré-assinada com HTTP Range | A |
+| TD-09 | Backend | Ciclo de status do vídeo | D: Coluna única `status` (`draft` → `processing` → `ready` ou `error`) | D |
+| TD-10 | Backend | Falha no processamento | A: Retries limitados, preservando o original | A |
 
 ## Fontes
 
