@@ -4,7 +4,7 @@ import { UnrecoverableError } from 'bullmq';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { StorageService } from '../storage/storage.service';
 import { Video, VideoStatus } from './entities/video.entity';
 import { VideoFileRejectedError } from './video-media.errors';
@@ -36,6 +36,13 @@ export class VideoProcessingService {
       }
       throw error;
     }
+  }
+
+  async markFailed(jobId: string): Promise<void> {
+    await this.videoRepository.update(
+      { id: jobId, status: In([VideoStatus.DRAFT, VideoStatus.PROCESSING]) },
+      { status: VideoStatus.ERROR },
+    );
   }
 
   private async processVideo(video: Video): Promise<void> {

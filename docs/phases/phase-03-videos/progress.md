@@ -1,7 +1,7 @@
 # phase-03-videos — Progress
 
 **Status:** in_progress
-**SIs:** 8/18 completed
+**SIs:** 9/18 completed
 
 ### SI-03.1 — Infra: Redis, MinIO e FFmpeg no Compose
 - **Status:** completed
@@ -80,12 +80,20 @@
   - Até a SI-03.8, um job em `failed` deixa o vídeo em `processing`; isso foi observado nos jobs de arquivo inválido e de objeto ausente.
   - Um `videoId` que não é UUID não vira `UnrecoverableError`: o Postgres responde `invalid input syntax for type uuid`, e o job termina em `failed` depois de 3 tentativas. A API só enfileira o `id` do vídeo, que é UUID.
   - Job com falha não aparece em `docker compose logs video-worker`: o motivo só fica em `failedReason`, no Redis.
-  - Não provados: dois travamentos seguidos, que levam o job a `failed` por exceder `maxStalledCount`; e o diretório temporário numa queda durante `extractThumbnail`, que pode ficar no `/tmp` do container, porque o `finally` não roda e o reinício preserva o sistema de arquivos.
+  - Não provado: o diretório temporário numa queda durante `extractThumbnail`, que pode ficar no `/tmp` do container, porque o `finally` não roda e o reinício preserva o sistema de arquivos. Os dois travamentos seguidos foram provados na SI-03.8.
 
 ### SI-03.8 — Registro da falha no `status`
-- **Status:** pending
-- **Tests:** no tests
-- **Observations:** none
+- **Status:** completed
+- **Tests:** 20 passing (7 novos do listener, com Postgres e MinIO reais, + 13 da SI-03.7, que usam o mesmo serviço e o `WorkerModule`)
+- **Observations:**
+  - Conferido nos tipos instalados, fechando a divergência de `library-refs.md`: `lastEventId` existe em `QueueEventsOptions`, o `@QueueEventsListener` o repassa ao `QueueEvents`, e o handler de `failed` recebe objeto, `{ jobId, failedReason, prev? }`.
+  - Jobs reais no `video-worker`: arquivo inválido chega a `error` em milissegundos depois do `failed`, com o objeto mantido no storage.
+  - `failed` retido: com o serviço parado, um consumidor temporário fez um job real falhar, e o vídeo ficou em `processing`. Ao subir o serviço, a releitura do stream gravou `error`.
+  - Dois travamentos seguidos: `pkill -9` com o job `active`, duas vezes. Os eventos foram `active > waiting > stalled > active > waiting > stalled > active > failed`, com `stalledCounter=2`, `failedReason` igual a `job stalled more than allowable limit` e `status` igual a `error`, com o objeto mantido. O `failed` só sai quando o job é pego pela terceira vez, em 12 ms e sem rodar o processamento, cerca de 1 min depois de o worker voltar.
+  - Reler o stream não altera vídeo em `ready`: um `failed` injetado com `XADD` para um vídeo `ready` deixou `status`, metadados e thumbnail iguais depois do restart.
+  - Falha ao gravar `error`: um `failed` injetado com `jobId` malformado gerou o log `Could not mark video not-a-uuid as error`, sem reinício do processo, e o job seguinte foi processado normalmente. Esse evento é registrado de novo a cada subida, enquanto ficar no stream; a API só enfileira UUID.
+  - Cada subida relê todos os `failed` retidos, até cerca de 10.000 eventos, e a gravação condicional torna isso seguro.
+  - Não provados com job real, só no teste de integração: `failed` de vídeo em `draft` e de `jobId` sem vídeo. Também não foi provada a perda de um `failed` aparado do stream, que exigiria mais de 10.000 eventos com o serviço parado.
 
 ### SI-03.9 — Endpoint POST /videos
 - **Status:** pending
