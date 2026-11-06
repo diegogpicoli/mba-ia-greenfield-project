@@ -22,7 +22,7 @@ target_file: test/videos-stream.e2e-spec.ts
 
 **Covers AC:** #1
 **Source:** auto
-**Last sync:** 2026-11-06T12:45:06Z
+**Last sync:** 2026-11-06T16:10:48Z
 
 **Steps:**
   1. GET /videos/{publicId}/stream com o token do dono
@@ -33,7 +33,7 @@ target_file: test/videos-stream.e2e-spec.ts
 
 **Covers AC:** #2
 **Source:** auto
-**Last sync:** 2026-11-06T12:45:06Z
+**Last sync:** 2026-11-06T16:10:48Z
 
 **Steps:**
   1. GET /videos/{publicId}/stream com o token do dono
@@ -47,7 +47,7 @@ target_file: test/videos-stream.e2e-spec.ts
 
 **Covers AC:** #3
 **Source:** auto
-**Last sync:** 2026-11-06T12:45:06Z
+**Last sync:** 2026-11-06T16:10:48Z
 
 **Steps:**
   1. Gravar no banco `status` igual a `draft` e chamar GET /videos/{publicId}/stream
@@ -61,7 +61,7 @@ target_file: test/videos-stream.e2e-spec.ts
 
 **Covers AC:** #4
 **Source:** auto
-**Last sync:** 2026-11-06T12:45:06Z
+**Last sync:** 2026-11-06T16:10:48Z
 
 **Steps:**
   1. GET /videos/{publicId}/stream com o token do outro usuário

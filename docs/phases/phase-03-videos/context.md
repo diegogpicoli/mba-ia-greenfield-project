@@ -3,7 +3,7 @@ kind: phase
 name: phase-03-videos
 sources_mtime:
   docs/project-plan.md: "2026-11-04T21:38:25.125388600-03:00"
-  docs/decisions/technical-decisions-phase-03-videos.md: "2026-11-06T09:39:03.497955700-03:00"
+  docs/decisions/technical-decisions-phase-03-videos.md: "2026-11-06T13:02:16.127626300-03:00"
   docs/decisions/technical-decisions-openapi-docs-nestjs.md: "2026-11-04T21:38:25.107346700-03:00"
   docs/phases/phase-01-configuracao-base/context.md: "2026-11-04T21:38:25.117393400-03:00"
   docs/phases/phase-02-auth/context.md: "2026-11-04T21:38:25.123389100-03:00"
@@ -56,12 +56,14 @@ _None explicitly mentioned in the Fase 03 block of project-plan.md._
 | phase-03-videos/TD-03 | phase | Backend | Organização de buckets, chaves e endpoints do storage | decided | A (dois buckets) | `@aws-sdk/client-s3` |
 | phase-03-videos/TD-04 | phase | Repo-wide | Origem da imagem Docker do MinIO | decided | A (build do fonte em commit fixo) | — |
 | phase-03-videos/TD-05 | phase | Backend | Como o worker roda | decided | A (mesmo código, container próprio) | — |
-|     └─ Last revision: 2026-11-06 — `ffmpeg` entra no `Dockerfile.dev`, compartilhado por API e worker, e o… | | | | | | |
+|     └─ Last revision: 2026-11-06 — O `video-worker` recebe `env_file` com `.env.example` e `.env` opcional, e `sta… | | | | | | |
 | phase-03-videos/TD-06 | phase | Backend | Extração de metadados e geração de thumbnail | decided | A (`spawn` com URL pré-assinada) | `ffmpeg` |
+|     └─ Last revision: 2026-11-06 — `ffprobe` e `ffmpeg` recebem, além de `-protocol_whitelist`, `-format_whitelist… | | | | | | |
 | phase-03-videos/TD-07 | phase | Backend | Estratégia de URL única | decided | A (base64url aleatório com `UNIQUE`) | — |
 | phase-03-videos/TD-08 | phase | Cross-layer | Estratégia de streaming e download | decided | A (URL pré-assinada com HTTP Range) | `@aws-sdk/s3-request-presigner` |
 |     └─ Last revision: 2026-11-06 — O campo da resposta se chama `expires_at`, no lugar do `expiresAt` da opção | | | | | | |
 | phase-03-videos/TD-09 | phase | Backend | Ciclo de status do vídeo | decided | D (coluna única no ciclo do enunciado) | — |
+|     └─ Last revision: 2026-11-06 — `VideosController` usa `@SkipThrottle()`, conforme `phase-02-auth/TD-08` | | | | | | |
 | phase-03-videos/TD-10 | phase | Backend | O que acontece em caso de falha no processamento | decided | A (retries limitados, preservando o original) | `bullmq` |
 |     └─ Last revision: 2026-11-06 — O listener usa `lastEventId: '0-0'` para reler os eventos retidos ao subir, e… | | | | | | |
 
@@ -118,11 +120,15 @@ _Source files:_
 **Revisions:**
 - 2026-11-06 — `ffmpeg` entra no `Dockerfile.dev`, compartilhado por API e worker, e o `@QueueEventsListener` fica no processo do worker, junto do processor. Rationale: o `npm test` roda em `nestjs-api` e precisa do `ffmpeg`; a API continua sem chamá-lo, porque o processor não carrega nela.
   Esta revisão prevalece sobre o trecho da opção que diz que a imagem da API segue sem FFmpeg.
+- 2026-11-06 — O `video-worker` recebe `env_file` com `.env.example` e `.env` opcional, e `start:worker` roda sem `--watch`. Rationale: um clone novo não tem `.env`, e a validação Joi exige as chaves. O `--watch` não percebe edição pelo bind mount e, com ele, o container não sairia para o `restart` agir; mudança no worker exige `docker compose restart video-worker`.
 
 ### phase-03-videos/TD-06
 
 **Recommendation:** O custo do job deixa de crescer com o arquivo, o que importa com 10GB, e não entra dependência sem manutenção; perde-se a tolerância do arquivo local, e o job passa a depender da rede até o storage. Entrada por stdin fica descartada, porque sem seek um MP4 com o índice no fim não abre. Como o padrão do FFmpeg libera todos os protocolos, os dois comandos usam `-protocol_whitelist http,https,tcp,tls`, impedindo que uma playlist enviada como vídeo leia arquivos locais; os argumentos vão em array, sem shell. O frame é tirado em torno de 10% da duração, com recuo para o primeiro frame em vídeos muito curtos. Ficam salvos duração, largura, altura, codecs, bitrate e container. A classificação de erros está no TD-10.
 **Libraries:** `ffmpeg`
+
+**Revisions:**
+- 2026-11-06 — `ffprobe` e `ffmpeg` recebem, além de `-protocol_whitelist`, `-format_whitelist` com os formatos de vídeo comuns e `-rw_timeout` de 60 s. Rationale: o whitelist de protocolos libera `http`, e uma playlist com segmento `http://` fazia o worker requisitar o endereço antes de falhar; a lista de formatos barra a playlist antes de qualquer requisição. Sem o timeout, uma conexão parada prenderia o job, com o lock do BullMQ sendo renovado.
 
 ### phase-03-videos/TD-07
 
@@ -141,6 +147,9 @@ _Source files:_
 
 **Recommendation:** É o ciclo que o enunciado pede, nasce rascunho como o plano exige e não antecipa nada da Fase 04; não há impedimento concreto, porque a retomada do upload usa o `ListParts` e não o status, e o custo é a Fase 04 precisar definir depois como representar a publicação. Os valores ficam em inglês, como os demais enums do código. Transições: `POST /videos` cria com `draft`; `complete` fecha o multipart, enfileira com `jobId = videoId` e só então grava `processing`, de modo que repetir a chamada é seguro; o worker grava `ready` junto com metadados e thumbnail, ou `error` (TD-10). A API expõe `status` no recurso do vídeo, para consulta por polling.
 **Libraries:** —
+
+**Revisions:**
+- 2026-11-06 — `VideosController` usa `@SkipThrottle()`, conforme `phase-02-auth/TD-08`. Rationale: com o `ThrottlerGuard` global de 10 requisições por minuto, o polling de `status` receberia `429`.
 
 ### phase-03-videos/TD-10
 

@@ -22,7 +22,7 @@ target_file: test/videos-download.e2e-spec.ts
 
 **Covers AC:** #1
 **Source:** auto
-**Last sync:** 2026-11-06T12:45:06Z
+**Last sync:** 2026-11-06T16:10:48Z
 
 **Steps:**
   1. GET /videos/{publicId}/download com o token do dono
@@ -33,7 +33,7 @@ target_file: test/videos-download.e2e-spec.ts
 
 **Covers AC:** #2
 **Source:** auto
-**Last sync:** 2026-11-06T12:45:06Z
+**Last sync:** 2026-11-06T16:10:48Z
 
 **Steps:**
   1. Levar até `ready` um vídeo com `original_filename` igual a `aula.mp4` e chamar GET /videos/{publicId}/download
@@ -46,7 +46,7 @@ target_file: test/videos-download.e2e-spec.ts
 
 **Covers AC:** #3
 **Source:** auto
-**Last sync:** 2026-11-06T12:45:06Z
+**Last sync:** 2026-11-06T16:10:48Z
 
 **Steps:**
   1. Levar até `ready` um vídeo com `original_filename` contendo aspas, quebra de linha e acentos, e chamar GET /videos/{publicId}/download
@@ -60,7 +60,7 @@ target_file: test/videos-download.e2e-spec.ts
 
 **Covers AC:** #4
 **Source:** auto
-**Last sync:** 2026-11-06T12:45:06Z
+**Last sync:** 2026-11-06T16:10:48Z
 
 **Steps:**
   1. Gravar no banco `status` igual a `processing` e chamar GET /videos/{publicId}/download
@@ -70,7 +70,7 @@ target_file: test/videos-download.e2e-spec.ts
 
 **Covers AC:** #5
 **Source:** auto
-**Last sync:** 2026-11-06T12:45:06Z
+**Last sync:** 2026-11-06T16:10:48Z
 
 **Steps:**
   1. GET /videos/{publicId}/download com o token do outro usuário

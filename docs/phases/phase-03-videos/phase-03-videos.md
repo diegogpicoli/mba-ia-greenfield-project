@@ -5,10 +5,10 @@ test_specs_aware: true
 affected_subprojects:
   - nestjs-project
 sources_mtime:
-  docs/phases/phase-03-videos/context.md: "2026-11-06T09:43:10.326543500-03:00"
-  docs/phases/phase-03-videos/library-refs.md: "2026-11-06T09:39:18.208519500-03:00"
+  docs/phases/phase-03-videos/context.md: "2026-11-06T13:06:30.080996900-03:00"
+  docs/phases/phase-03-videos/library-refs.md: "2026-11-06T13:02:16.600001100-03:00"
   docs/project-plan.md: "2026-11-04T21:38:25.125388600-03:00"
-  docs/decisions/technical-decisions-phase-03-videos.md: "2026-11-06T09:39:03.497955700-03:00"
+  docs/decisions/technical-decisions-phase-03-videos.md: "2026-11-06T13:02:16.127626300-03:00"
   docs/decisions/technical-decisions-openapi-docs-nestjs.md: "2026-11-04T21:38:25.107346700-03:00"
   docs/phases/phase-01-configuracao-base/context.md: "2026-11-04T21:38:25.117393400-03:00"
   docs/phases/phase-02-auth/context.md: "2026-11-04T21:38:25.123389100-03:00"
@@ -183,9 +183,9 @@ Entregar o upload de vídeos de até 10GB sem impacto na performance, com pré-c
 
 **Technical actions:**
 
-1. Criar `src/videos/video-media.service.ts` com `probe`, que roda `ffprobe -protocol_whitelist http,https,tcp,tls -show_format -show_streams -of json <url>` por `spawn`, com argumentos em array e sem shell, e devolve `duration`, `width`, `height`, `video_codec`, `audio_codec`, `bitrate` e `container` (per `phase-03-videos/TD-06`)
+1. Criar `src/videos/video-media.service.ts` com `probe`, que roda `ffprobe -protocol_whitelist http,https,tcp,tls -format_whitelist <MEDIA_ALLOWED_FORMATS> -rw_timeout 60000000 -show_format -show_streams -of json <url>` por `spawn`, com argumentos em array e sem shell, e devolve `duration`, `width`, `height`, `video_codec`, `audio_codec`, `bitrate` e `container` (per `phase-03-videos/TD-06`)
 2. Conferir na imagem do worker a saída JSON e os nomes de campo do `ffprobe`, lacuna registrada em `library-refs.md`
-3. Implementar `extractThumbnail`, que roda `ffmpeg -protocol_whitelist http,https,tcp,tls -ss T -i <url> -frames:v 1 <saida>`, com o frame em torno de 10% da duração e recuo para o primeiro frame em vídeos muito curtos (per `phase-03-videos/TD-06`)
+3. Implementar `extractThumbnail`, que roda `ffmpeg -protocol_whitelist http,https,tcp,tls -format_whitelist <MEDIA_ALLOWED_FORMATS> -rw_timeout 60000000 -ss T -i <url> -frames:v 1 <saida>`, com o frame em torno de 10% da duração e recuo para o primeiro frame em vídeos muito curtos (per `phase-03-videos/TD-06`)
 4. Sinalizar com `VideoFileRejectedError` quando o `ffprobe` rejeita o arquivo ou não há stream de vídeo (per `phase-03-videos/TD-10`)
 5. Criar o helper `src/test/generate-test-video.ts`, que gera vídeos de teste com `ffmpeg -f lavfi`, sem binário commitado
 
@@ -205,6 +205,7 @@ Entregar o upload de vídeos de até 10GB sem impacto na performance, com pré-c
 - Um vídeo de um único frame gera thumbnail
 - Um arquivo de texto resulta em `VideoFileRejectedError`
 - Uma playlist que aponta para `file:///etc/passwd` não lê o arquivo local e resulta em `VideoFileRejectedError`
+- Uma playlist com segmento `http://` é rejeitada sem requisitar o endereço
 
 ---
 
@@ -283,7 +284,7 @@ Entregar o upload de vídeos de até 10GB sem impacto na performance, com pré-c
 1. Criar `ChannelsService.findByUserId`, porque buscar o canal é responsabilidade de `ChannelsModule`
 2. Criar `src/videos/dto/create-video.dto.ts`, os DTOs de resposta e `VideoTooLargeException` (`VIDEO_TOO_LARGE`), conforme `### API Contracts → POST /videos`
 3. Criar `src/videos/videos.service.ts` com `createDraft`, seguindo o `**Behavior:**` do contrato, inclusive a nova tentativa em colisão `23505` no mesmo padrão de `ChannelsService` (per `phase-03-videos/TD-02`, `phase-03-videos/TD-07`)
-4. Criar `src/videos/videos.controller.ts` com `@SkipThrottle()` na classe (per `phase-02-auth/TD-08`), `@Post()`, `@ApiBearerAuth('access-token')`, `@ApiOperation` e `@ApiResponse` com `ApiErrorEnvelope` para cada erro (per `openapi-docs-nestjs/TD-01`, `phase-02-auth/TD-07`)
+4. Criar `src/videos/videos.controller.ts` com `@SkipThrottle()` na classe (per `phase-02-auth/TD-08`, `phase-03-videos/TD-09`), `@Post()`, `@ApiBearerAuth('access-token')`, `@ApiOperation` e `@ApiResponse` com `ApiErrorEnvelope` para cada erro (per `openapi-docs-nestjs/TD-01`, `phase-02-auth/TD-07`)
 5. Ampliar `src/videos/videos.module.ts`, criado na SI-03.3, com `ChannelsModule` e `StorageModule`
 
 **Tests:**
@@ -555,7 +556,7 @@ Entregar o upload de vídeos de até 10GB sem impacto na performance, com pré-c
 **Technical actions:**
 
 1. Atualizar o `CLAUDE.md` raiz: tirar o `TBD` da Message Queue, indicando BullMQ com Redis, e descrever na API o upload por URL pré-assinada (per `phase-03-videos/TD-01`, `phase-03-videos/TD-02`)
-2. Atualizar `nestjs-project/CLAUDE.md` com a seção de vídeos, os serviços `redis`, `minio` e `video-worker`, e o fato de o worker subir sozinho no `docker compose up` (per `phase-03-videos/TD-05`)
+2. Atualizar `nestjs-project/CLAUDE.md` com a seção de vídeos, os serviços `redis`, `minio` e `video-worker`, o fato de o worker subir sozinho no `docker compose up` e o fato de que mudança no código do worker exige `docker compose restart video-worker` (per `phase-03-videos/TD-05`)
 3. Reexportar `openapi.json` com `docker compose exec nestjs-api npm run openapi:export`, exigido por `.claude/rules/nestjs-controllers.md` (per `openapi-docs-nestjs/TD-02`)
 4. Trocar o `TBD` da linha 13 de `docs/diagrams/software-arch.mermaid` (Message Queue) por BullMQ com Redis (per `phase-03-videos/TD-01`)
 
@@ -568,7 +569,28 @@ Entregar o upload de vídeos de até 10GB sem impacto na performance, com pré-c
 - `docs/diagrams/software-arch.mermaid` mostra a Message Queue como BullMQ com Redis, sem `TBD`
 - O `CLAUDE.md` raiz não traz mais `TBD` na Message Queue
 - `nestjs-project/CLAUDE.md` lista `redis`, `minio` e `video-worker` entre os serviços
+- `nestjs-project/CLAUDE.md` diz que mudança no código do worker exige `docker compose restart video-worker`
 - `openapi.json` traz os sete endpoints de `### API Contracts`, cada um com as respostas de erro do contrato
+
+---
+
+### SI-03.18 (amendment of SI-03.5) — `env_file` no `video-worker` e `start:worker` sem `--watch`
+
+**Description:** Registra duas mudanças no serviço entregue pela SI-03.5: ele sobe em clone novo, sem `.env`, e a queda do worker encerra o container, para o `restart` agir. O código já existe, e a SI reconfere as provas.
+
+**Technical actions:**
+
+1. Conferir no `compose.yaml` o `env_file` do `video-worker`, com `.env.example` e `.env` opcional, que prevalece (per `phase-03-videos/TD-05`)
+2. Conferir no `package.json` o `start:worker` sem `--watch`, que compila com `tsconfig.worker.json` e faz `exec node dist-worker/worker`, e no `compose.yaml` o `command`, que faz `exec npm run start:worker` (per `phase-03-videos/TD-05`)
+
+**Tests:** _(empty — infraestrutura; conferida pelos critérios de aceite)_
+
+**Dependencies:** SI-03.5 — serviço `video-worker`
+
+**Acceptance criteria:**
+
+- `docker compose up -d` em um clone novo, sem `.env`, deixa o `video-worker` com o contexto iniciado, sem nenhum `docker compose exec`
+- Encerrar `node dist-worker/worker` faz o container voltar a rodar sozinho, com `RestartCount` maior
 
 ---
 
@@ -850,6 +872,7 @@ SI-03.1 (root)
 ├── SI-03.2 — depends on SI-03.1 (as chaves apontam para os serviços do Compose)
 │   └── SI-03.4 — depends on SI-03.1, SI-03.2 (MinIO em execução, config e SDK)
 │       ├── SI-03.5 — depends on SI-03.1, SI-03.2, SI-03.3, SI-03.4 (worker precisa de config, entidade e storage)
+│       │   ├── SI-03.18 — depends on SI-03.5 (emenda do serviço `video-worker`)
 │       │   ├── SI-03.7 — depends on SI-03.5, SI-03.6 (processor no WorkerModule, usando o FFmpeg)
 │       │   │   └── SI-03.8 — depends on SI-03.7 (listener usa VideoProcessingService)
 │       │   │       └── SI-03.13 — depends on SI-03.8, SI-03.12 (espera o worker real; upload em andamento)
@@ -886,6 +909,7 @@ SI-03.3 (root, independent) → SI-03.5, SI-03.9
 - [ ] SI-03.15 — Endpoint GET /videos/{publicId}/download
 - [ ] SI-03.16 — Prova do fluxo completo com infra real
 - [ ] SI-03.17 — Documentação e contrato OpenAPI
+- [ ] SI-03.18 (amendment of SI-03.5) — `env_file` no `video-worker` e `start:worker` sem `--watch`
 
 **Full test suites:**
 

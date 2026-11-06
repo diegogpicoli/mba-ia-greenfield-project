@@ -22,7 +22,7 @@ target_file: test/videos-get.e2e-spec.ts
 
 **Covers AC:** #1, #5
 **Source:** auto
-**Last sync:** 2026-11-06T12:45:06Z
+**Last sync:** 2026-11-06T16:10:48Z
 
 **Steps:**
   1. GET /videos/{publicId} com o token do dono, com o vídeo em `draft`
@@ -34,7 +34,7 @@ target_file: test/videos-get.e2e-spec.ts
 
 **Covers AC:** #2
 **Source:** auto
-**Last sync:** 2026-11-06T12:45:06Z
+**Last sync:** 2026-11-06T16:10:48Z
 
 **Steps:**
   1. Gravar no banco `status` igual a `ready`, com metadados e `thumbnail_key`
@@ -47,7 +47,7 @@ target_file: test/videos-get.e2e-spec.ts
 
 **Covers AC:** #3
 **Source:** auto
-**Last sync:** 2026-11-06T12:45:06Z
+**Last sync:** 2026-11-06T16:10:48Z
 
 **Steps:**
   1. GET /videos/{publicId} com o token do outro usuário
@@ -59,7 +59,7 @@ target_file: test/videos-get.e2e-spec.ts
 
 **Covers AC:** #4
 **Source:** auto
-**Last sync:** 2026-11-06T12:45:06Z
+**Last sync:** 2026-11-06T16:10:48Z
 
 **Steps:**
   1. GET /videos/{publicId} sem o header `Authorization`
@@ -69,7 +69,7 @@ target_file: test/videos-get.e2e-spec.ts
 
 **Covers AC:** #6
 **Source:** auto
-**Last sync:** 2026-11-06T14:12:23Z
+**Last sync:** 2026-11-06T16:10:48Z
 
 **Steps:**
   1. GET /videos/{publicId} com o token do dono, mais de 10 vezes dentro de um minuto

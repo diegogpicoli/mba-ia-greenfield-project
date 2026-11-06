@@ -22,7 +22,7 @@ target_file: test/videos-complete.e2e-spec.ts
 
 **Covers AC:** #1
 **Source:** auto
-**Last sync:** 2026-11-06T12:45:06Z
+**Last sync:** 2026-11-06T16:10:48Z
 
 **Steps:**
   1. Gerar um vídeo acima de 16 MiB, criar o vídeo, assinar as partes e fazer PUT de cada uma, guardando o header `ETag`
@@ -36,7 +36,7 @@ target_file: test/videos-complete.e2e-spec.ts
 
 **Covers AC:** #2
 **Source:** auto
-**Last sync:** 2026-11-06T12:45:06Z
+**Last sync:** 2026-11-06T16:10:48Z
 
 **Steps:**
   1. Enviar as duas partes e chamar POST /videos/{publicId}/complete com `parts` só com a parte 1
@@ -48,7 +48,7 @@ target_file: test/videos-complete.e2e-spec.ts
 
 **Covers AC:** #2
 **Source:** auto
-**Last sync:** 2026-11-06T12:45:06Z
+**Last sync:** 2026-11-06T16:10:48Z
 
 **Steps:**
   1. Enviar as duas partes e chamar POST /videos/{publicId}/complete com um `etag` alterado
@@ -60,7 +60,7 @@ target_file: test/videos-complete.e2e-spec.ts
 
 **Covers AC:** #2
 **Source:** auto
-**Last sync:** 2026-11-06T12:45:06Z
+**Last sync:** 2026-11-06T16:10:48Z
 
 **Steps:**
   1. Criar o vídeo com `declared_size` 20971520 e enviar as duas partes com total menor que o declarado
@@ -74,7 +74,7 @@ target_file: test/videos-complete.e2e-spec.ts
 
 **Covers AC:** #4
 **Source:** auto
-**Last sync:** 2026-11-06T12:45:06Z
+**Last sync:** 2026-11-06T16:10:48Z
 
 **Steps:**
   1. Fechar um vídeo válido e observar `StorageService` com `jest.spyOn`
@@ -90,7 +90,7 @@ target_file: test/videos-complete.e2e-spec.ts
 
 **Covers AC:** #5
 **Source:** auto
-**Last sync:** 2026-11-06T12:45:06Z
+**Last sync:** 2026-11-06T16:10:48Z
 
 **Steps:**
   1. Enviar as partes de um vídeo válido e fechar o multipart pelo `StorageService`, mantendo a linha em `draft`
@@ -104,7 +104,7 @@ target_file: test/videos-complete.e2e-spec.ts
 
 **Covers AC:** #6
 **Source:** auto
-**Last sync:** 2026-11-06T12:45:06Z
+**Last sync:** 2026-11-06T16:10:48Z
 
 **Steps:**
   1. Abortar o multipart pelo `StorageService`, mantendo a linha em `draft`
@@ -116,7 +116,7 @@ target_file: test/videos-complete.e2e-spec.ts
 
 **Covers AC:** #7
 **Source:** auto
-**Last sync:** 2026-11-06T12:45:06Z
+**Last sync:** 2026-11-06T16:10:48Z
 
 **Steps:**
   1. Fechar um vídeo válido e obter o job de `jobId` igual ao `id` do vídeo na fila `video-processing`
@@ -129,7 +129,7 @@ target_file: test/videos-complete.e2e-spec.ts
 
 **Covers AC:** #9
 **Source:** auto
-**Last sync:** 2026-11-06T12:45:06Z
+**Last sync:** 2026-11-06T16:10:48Z
 
 **Steps:**
   1. POST /videos/{publicId}/complete com o token do outro usuário

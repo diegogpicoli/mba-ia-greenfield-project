@@ -22,7 +22,7 @@ target_file: test/videos-create.e2e-spec.ts
 
 **Covers AC:** #1, #6
 **Source:** auto
-**Last sync:** 2026-11-06T12:45:06Z
+**Last sync:** 2026-11-06T16:10:48Z
 
 **Steps:**
   1. POST /videos com token válido e body `{ original_filename: "aula.mp4", declared_size: 20971520, content_type: "video/mp4" }`
@@ -35,7 +35,7 @@ target_file: test/videos-create.e2e-spec.ts
 
 **Covers AC:** #2
 **Source:** auto
-**Last sync:** 2026-11-06T12:45:06Z
+**Last sync:** 2026-11-06T16:10:48Z
 
 **Steps:**
   1. POST /videos com token válido e `declared_size` igual a 10737418240
@@ -46,7 +46,7 @@ target_file: test/videos-create.e2e-spec.ts
 
 **Covers AC:** #3
 **Source:** auto
-**Last sync:** 2026-11-06T12:45:06Z
+**Last sync:** 2026-11-06T16:10:48Z
 
 **Steps:**
   1. POST /videos com token válido e `declared_size` igual a 10737418241
@@ -58,7 +58,7 @@ target_file: test/videos-create.e2e-spec.ts
 
 **Covers AC:** #4
 **Source:** auto
-**Last sync:** 2026-11-06T12:45:06Z
+**Last sync:** 2026-11-06T16:10:48Z
 
 **Steps:**
   1. POST /videos com token válido e body sem `content_type`
@@ -69,7 +69,7 @@ target_file: test/videos-create.e2e-spec.ts
 
 **Covers AC:** #5
 **Source:** auto
-**Last sync:** 2026-11-06T12:45:06Z
+**Last sync:** 2026-11-06T16:10:48Z
 
 **Steps:**
   1. POST /videos com body válido e sem o header `Authorization`
@@ -79,7 +79,7 @@ target_file: test/videos-create.e2e-spec.ts
 
 **Covers AC:** #7
 **Source:** auto
-**Last sync:** 2026-11-06T12:45:06Z
+**Last sync:** 2026-11-06T16:10:48Z
 
 **Steps:**
   1. POST /videos com token válido e body válido

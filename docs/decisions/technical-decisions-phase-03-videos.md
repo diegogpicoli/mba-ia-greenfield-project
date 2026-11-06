@@ -194,6 +194,7 @@ _Decisões anteriores que restringem as opções:_
 **Revisions:**
 - 2026-11-06 — `ffmpeg` entra no `Dockerfile.dev`, compartilhado por API e worker, e o `@QueueEventsListener` fica no processo do worker, junto do processor. Rationale: o `npm test` roda em `nestjs-api` e precisa do `ffmpeg`; a API continua sem chamá-lo, porque o processor não carrega nela.
   Esta revisão prevalece sobre o trecho da opção que diz que a imagem da API segue sem FFmpeg.
+- 2026-11-06 — O `video-worker` recebe `env_file` com `.env.example` e `.env` opcional, e `start:worker` roda sem `--watch`. Rationale: um clone novo não tem `.env`, e a validação Joi exige as chaves. O `--watch` não percebe edição pelo bind mount e, com ele, o container não sairia para o `restart` agir; mudança no worker exige `docker compose restart video-worker`.
 
 ---
 
@@ -226,6 +227,9 @@ _Decisões anteriores que restringem as opções:_
 
 **Decision:** A (`spawn` com URL pré-assinada)
 **Libraries:** `ffmpeg`
+
+**Revisions:**
+- 2026-11-06 — `ffprobe` e `ffmpeg` recebem, além de `-protocol_whitelist`, `-format_whitelist` com os formatos de vídeo comuns e `-rw_timeout` de 60 s. Rationale: o whitelist de protocolos libera `http`, e uma playlist com segmento `http://` fazia o worker requisitar o endereço antes de falhar; a lista de formatos barra a playlist antes de qualquer requisição. Sem o timeout, uma conexão parada prenderia o job, com o lock do BullMQ sendo renovado.
 
 ---
 
@@ -336,6 +340,9 @@ _Decisões anteriores que restringem as opções:_
 **Recommendation:** **Option D (coluna única no ciclo do enunciado)** — É o ciclo que o enunciado pede, nasce rascunho como o plano exige e não antecipa nada da Fase 04; não há impedimento concreto, porque a retomada do upload usa o `ListParts` e não o status, e o custo é a Fase 04 precisar definir depois como representar a publicação. Os valores ficam em inglês, como os demais enums do código. Transições: `POST /videos` cria com `draft`; `complete` fecha o multipart, enfileira com `jobId = videoId` e só então grava `processing`, de modo que repetir a chamada é seguro; o worker grava `ready` junto com metadados e thumbnail, ou `error` (TD-10). A API expõe `status` no recurso do vídeo, para consulta por polling.
 
 **Decision:** D (coluna única no ciclo do enunciado)
+
+**Revisions:**
+- 2026-11-06 — `VideosController` usa `@SkipThrottle()`, conforme `phase-02-auth/TD-08`. Rationale: com o `ThrottlerGuard` global de 10 requisições por minuto, o polling de `status` receberia `429`.
 
 ---
 

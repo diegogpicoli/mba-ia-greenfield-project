@@ -1,7 +1,7 @@
 # phase-03-videos — Progress
 
 **Status:** in_progress
-**SIs:** 5/17 completed
+**SIs:** 6/18 completed
 
 ### SI-03.1 — Infra: Redis, MinIO e FFmpeg no Compose
 - **Status:** completed
@@ -44,7 +44,7 @@
 - **Status:** completed
 - **Tests:** 1 passing
 - **Observations:**
-  - **Para a documentação da SI-03.17:** mudança no código do worker exige `docker compose restart video-worker`. O bind mount é `9p`, e nele nem `fs.watch` nem `nest start --watch` perceberam edição, feita no host ou dentro do container, mesmo com o compilador já em "Watching for file changes". O `start:dev` da API usa o mesmo mount, então deve ter a mesma limitação; isso não foi medido na API.
+  - **Para a documentação da SI-03.17:** mudança no código do worker exige `docker compose restart video-worker`. O bind mount é `9p`, e nele nem `fs.watch` nem `nest start --watch` perceberam edição, feita no host ou dentro do container, mesmo com o compilador já em "Watching for file changes".
   - `start:worker` não usa `--watch`. Além de não recarregar, o CLI do Nest continua vivo quando o processo do worker morre, e o container nunca sairia para o `restart: unless-stopped` agir. O script compila e faz `exec node dist-worker/worker`, e o `command` faz `exec npm run start:worker`, então a morte do worker encerra o container.
   - O `video-worker` recebe `env_file` com `.env.example` e `.env` opcional, que prevalece. O plano não previa isso: um clone novo não tem `.env`, e a validação Joi exige as chaves. O `nestjs-api` segue dependendo de um `.env` para subir a aplicação.
   - Tempos medidos: primeira subida com `npm install` em volume vazio, de 1 a 2 min; clone novo com imagens em cache, 85 s; volta após a morte do processo, 38 s. Compilar o worker leva cerca de 30 s com o `node_modules` em volume, contra mais de 6 min com o `node_modules` no bind mount. O tempo com imagens construídas do zero não foi medido.
@@ -54,9 +54,22 @@
   - Não provados: o consumo de jobs e a recuperação de job travado após a queda, porque o processor só chega na SI-03.7. O serviço ainda só registra a fila.
 
 ### SI-03.6 — Extração de metadados e thumbnail com FFmpeg
-- **Status:** pending
-- **Tests:** no tests
-- **Observations:** none
+- **Status:** completed
+- **Tests:** 36 passing (18 de integração com `ffprobe`, `ffmpeg` e MinIO reais + 18 unitários)
+- **Observations:**
+  - Saída do `ffprobe` 5.1.9 conferida no binário, fechando a lacuna de `library-refs.md`: `format.duration`, `format.bit_rate` e `format.format_name` são strings, e `streams[]` traz `codec_type`, `codec_name`, `width`, `height`, `duration` e `disposition.attached_pic`. O `container` é a lista do demuxer, como `mov,mp4,m4a,3gp,3g2,mj2`.
+  - **Para a SI-03.7:** `VideoFileRejectedError` é falha permanente, e `MediaCommandError` é falha que pode ser repetida. O `ffprobe` sai com código 1 em todos os casos, então a distinção vem do texto do `stderr`, com as marcas em `REJECTED_FILE_STDERR_MARKERS`. `403`, `404`, `5xx`, conexão recusada, host desconhecido e tempo esgotado não são rejeição do arquivo.
+  - Um objeto de 0 byte responde `4XX` ao `Range` e cai como falha repetível, não como rejeição. O `complete` exige soma igual a `declared_size`, que é no mínimo 1, então esse caso não chega ao worker pelo fluxo normal.
+  - `-ss` depois do último frame termina com código 0 e sem arquivo, inclusive em vídeo de um frame com `-ss 0.004`. Por isso o recuo para o primeiro frame confere se o arquivo foi gravado, em vez de usar um limite de duração.
+  - Os dois comandos usam `-rw_timeout` de 60 s. Sem ele, uma conexão parada mantém o processo vivo indefinidamente: o event loop segue renovando o lock do BullMQ, e o job nunca termina. Medido com 3 s: o `ffprobe` sai em 3,2 s com `Connection timed out`.
+  - Mensagens de erro nunca carregam URLs, para a assinatura não ir parar nos logs nem no `failedReason`.
+  - Um arquivo de áudio com capa tem stream `video` com `attached_pic`; isso conta como ausência de stream de vídeo.
+  - Na 5.1.9, uma playlist servida por HTTP não lê arquivo local mesmo sem `-protocol_whitelist`, por causa de `allowed_segment_extensions` no HLS e do whitelist padrão de protocolos aninhados. O teste de `file://` direto é o que detecta a remoção da opção: sem ela, o `ffprobe` lê o arquivo.
+  - Playlist com segmento `http://`: o whitelist de protocolos libera `http`, então, sem outra barreira, o processo requisita o endereço antes de falhar. Medido com um servidor local, que recebeu a requisição; dentro do Compose, o worker alcança `db`, `redis`, `minio` e `nestjs-api`. `-format_whitelist` com `MEDIA_ALLOWED_FORMATS` barra a playlist antes de qualquer requisição, nos dois comandos: os testes com servidor local falham sem a opção e passam com ela.
+  - `MEDIA_ALLOWED_FORMATS` traz `mov,mp4,m4a,3gp,3g2,mj2,matroska,webm,avi,mpegts,flv,asf,mpeg,ogg`, com os nomes conferidos em `ffmpeg -demuxers` na 5.1.9. Um arquivo real de `mp4`, `mov`, `3gp`, `matroska`, `webm`, `avi`, `mpegts`, `flv`, `asf`, `mpeg` e `ogg` passou no `ffprobe` com a lista ativa. Contêineres fora dela, como `mxf`, `rm`, `nut`, `wtv` e `dv`, e fluxos crus, como `h264` e `hevc`, passam a ser rejeitados. No `mov`, `enable_drefs` vem desligado, então faixas externas não são abertas.
+  - No `mpegts`, `-ss 0.2` em um vídeo de 2 s termina com código 0 e sem arquivo, e o recuo para o primeiro frame cobre esse caso.
+  - Para a SI-03.16: um `testsrc` de 5 s ocupa cerca de 80 KB, então um vídeo acima de 16 MiB precisa de outra fonte ou de bitrate alto em `generateTestVideo`.
+  - Não provados: a leitura parcial por `Range` em arquivo grande, porque os vídeos de teste são pequenos; o valor de 60 s do `-rw_timeout`, medido só com 3 s; e, pelo serviço, formatos além de `mp4`, `matroska` e `mpegts`, porque os demais foram medidos uma vez, direto nos comandos.
 
 ### SI-03.7 — Processamento do vídeo no worker
 - **Status:** pending
@@ -112,3 +125,9 @@
 - **Status:** pending
 - **Tests:** no tests
 - **Observations:** none
+
+### SI-03.18 (amendment of SI-03.5) — `env_file` no `video-worker` e `start:worker` sem `--watch`
+- **Status:** pending
+- **Tests:** no tests
+- **Observations:**
+  - Registra no plano a revisão de 2026-11-06 do `phase-03-videos/TD-05`. O código já existe, então a SI fecha reconferindo as provas de clone novo e de reinício do container.

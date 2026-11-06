@@ -22,7 +22,7 @@ target_file: test/videos-parts-list.e2e-spec.ts
 
 **Covers AC:** #1
 **Source:** auto
-**Last sync:** 2026-11-06T12:45:06Z
+**Last sync:** 2026-11-06T16:10:48Z
 
 **Steps:**
   1. GET /videos/{publicId}/parts com o token do dono, sem nenhuma parte enviada
@@ -34,7 +34,7 @@ target_file: test/videos-parts-list.e2e-spec.ts
 
 **Covers AC:** #2
 **Source:** auto
-**Last sync:** 2026-11-06T12:45:06Z
+**Last sync:** 2026-11-06T16:10:48Z
 
 **Steps:**
   1. Assinar a parte 1 e fazer PUT de 16 MiB na URL devolvida
@@ -48,7 +48,7 @@ target_file: test/videos-parts-list.e2e-spec.ts
 
 **Covers AC:** #3
 **Source:** auto
-**Last sync:** 2026-11-06T12:45:06Z
+**Last sync:** 2026-11-06T16:10:48Z
 
 **Steps:**
   1. Gravar no banco `status` igual a `processing`
@@ -60,7 +60,7 @@ target_file: test/videos-parts-list.e2e-spec.ts
 
 **Covers AC:** #4
 **Source:** auto
-**Last sync:** 2026-11-06T12:45:06Z
+**Last sync:** 2026-11-06T16:10:48Z
 
 **Steps:**
   1. Abortar o multipart pelo `StorageService`, com o vídeo ainda em `draft`
@@ -72,7 +72,7 @@ target_file: test/videos-parts-list.e2e-spec.ts
 
 **Covers AC:** #5
 **Source:** auto
-**Last sync:** 2026-11-06T12:45:06Z
+**Last sync:** 2026-11-06T16:10:48Z
 
 **Steps:**
   1. GET /videos/{publicId}/parts com o token do outro usuário

@@ -25,7 +25,7 @@ libs:
     context7_id: "/websites/ffmpeg_documentation"
     fetched_at: "2026-11-05T20:34:02-03:00"
 sources_mtime:
-  docs/decisions/technical-decisions-phase-03-videos.md: "2026-11-06T09:39:03.497955700-03:00"
+  docs/decisions/technical-decisions-phase-03-videos.md: "2026-11-06T13:02:16.127626300-03:00"
 ---
 
 # phase-03-videos — Library References
