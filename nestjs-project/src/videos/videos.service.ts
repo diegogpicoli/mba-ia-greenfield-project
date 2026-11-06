@@ -4,10 +4,14 @@ import { randomBytes, randomUUID } from 'node:crypto';
 import { Repository } from 'typeorm';
 import { ChannelsService } from '../channels/channels.service';
 import { isPgUniqueViolationOnColumn } from '../common/database/pg-errors';
-import { VideoTooLargeException } from '../common/exceptions/domain.exception';
+import {
+  VideoNotFoundException,
+  VideoTooLargeException,
+} from '../common/exceptions/domain.exception';
 import { StorageService } from '../storage/storage.service';
 import type { CreateVideoDto } from './dto/create-video.dto';
 import type { CreatedVideoResponseDto } from './dto/created-video-response.dto';
+import type { VideoResponseDto } from './dto/video-response.dto';
 import { Video } from './entities/video.entity';
 import {
   PUBLIC_ID_BYTES,
@@ -58,6 +62,42 @@ export class VideosService {
       declared_size: video.declared_size,
       part_size: VIDEO_PART_SIZE_BYTES,
       part_count: Math.ceil(video.declared_size / VIDEO_PART_SIZE_BYTES),
+      created_at: video.created_at,
+      updated_at: video.updated_at,
+    };
+  }
+
+  async getOwned(publicId: string, userId: string): Promise<VideoResponseDto> {
+    return this.toResponse(await this.findOwned(publicId, userId));
+  }
+
+  async findOwned(publicId: string, userId: string): Promise<Video> {
+    const video = await this.videoRepository.findOne({
+      where: { public_id: publicId, channel: { user_id: userId } },
+    });
+    if (!video) {
+      throw new VideoNotFoundException();
+    }
+    return video;
+  }
+
+  private toResponse(video: Video): VideoResponseDto {
+    return {
+      public_id: video.public_id,
+      title: video.title,
+      status: video.status,
+      original_filename: video.original_filename,
+      declared_size: video.declared_size,
+      duration: video.duration,
+      width: video.width,
+      height: video.height,
+      video_codec: video.video_codec,
+      audio_codec: video.audio_codec,
+      bitrate: video.bitrate,
+      container: video.container,
+      thumbnail_url: video.thumbnail_key
+        ? this.storageService.getThumbnailUrl(video.thumbnail_key)
+        : null,
       created_at: video.created_at,
       updated_at: video.updated_at,
     };

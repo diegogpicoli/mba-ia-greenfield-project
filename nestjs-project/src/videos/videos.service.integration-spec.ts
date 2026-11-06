@@ -7,6 +7,7 @@ import { VerificationToken } from '../auth/entities/verification-token.entity';
 import { ChannelsModule } from '../channels/channels.module';
 import { ChannelsService } from '../channels/channels.service';
 import { Channel } from '../channels/entities/channel.entity';
+import { VideoNotFoundException } from '../common/exceptions/domain.exception';
 import storageConfig from '../config/storage.config';
 import { StorageModule } from '../storage/storage.module';
 import { StorageService } from '../storage/storage.service';
@@ -117,6 +118,36 @@ describe('VideosService (integration)', () => {
     expect(response).not.toHaveProperty('upload_id');
     expect(response).not.toHaveProperty('source_key');
     expect(response).not.toHaveProperty('channel_id');
+  });
+
+  describe('findOwned', () => {
+    it('should return the video to its owner', async () => {
+      const { user, channel } = await createUserWithChannel();
+      const { public_id } = await service.createDraft(user.id, DTO);
+
+      const video = await service.findOwned(public_id, user.id);
+
+      expect(video.public_id).toBe(public_id);
+      expect(video.channel_id).toBe(channel.id);
+    });
+
+    it('should not find the video of another channel', async () => {
+      const owner = await createUserWithChannel();
+      const other = await createUserWithChannel();
+      const { public_id } = await service.createDraft(owner.user.id, DTO);
+
+      await expect(
+        service.findOwned(public_id, other.user.id),
+      ).rejects.toBeInstanceOf(VideoNotFoundException);
+    });
+
+    it('should not find a public_id that does not exist', async () => {
+      const { user } = await createUserWithChannel();
+
+      await expect(
+        service.findOwned('doesnotexis', user.id),
+      ).rejects.toBeInstanceOf(VideoNotFoundException);
+    });
   });
 
   it('should give each draft its own public_id and key', async () => {

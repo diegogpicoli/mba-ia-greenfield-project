@@ -1,7 +1,7 @@
 # phase-03-videos — Progress
 
 **Status:** in_progress
-**SIs:** 10/18 completed
+**SIs:** 11/18 completed
 
 ### SI-03.1 — Infra: Redis, MinIO e FFmpeg no Compose
 - **Status:** completed
@@ -108,9 +108,13 @@
   - `openapi.json` e `src/metadata.ts` não foram regenerados, porque isso é da SI-03.17.
 
 ### SI-03.10 — Endpoint GET /videos/{publicId}
-- **Status:** pending
-- **Tests:** no tests
-- **Observations:** none
+- **Status:** completed
+- **Tests:** 30 passing (5 do e2e da spec, 6 do e2e de `videos-create` e 19 de `VideosService`, sendo 13 unitários e 6 de integração)
+- **Observations:**
+  - `@SkipThrottle()` provado: sem ele, o cenário `nao-limita-polling-de-status` falha, com `429` na 11ª e na 12ª requisição.
+  - `findOwned` usa uma única consulta, filtrando por `channel.user_id`, então vídeo de outro canal e `public_id` inexistente dão o mesmo corpo de `404`. As próximas rotas de dono usam esse método.
+  - A montagem de `thumbnail_url` ficou em `StorageService.getThumbnailUrl`, porque o endpoint público e o bucket são do storage.
+  - Não provado aqui: `thumbnail_url` apontando para um objeto real, porque o e2e grava `ready` direto na linha. A prova fica para a SI-03.16.
 
 ### SI-03.11 — Endpoint POST /videos/{publicId}/parts/sign
 - **Status:** pending

@@ -237,6 +237,10 @@ export class StorageService implements OnModuleInit, OnModuleDestroy {
     return toSignedUrl(url, expiresIn);
   }
 
+  getThumbnailUrl(key: string): string {
+    return `${this.config.publicEndpoint}/${this.config.bucketThumbnails}/${key}`;
+  }
+
   async putThumbnail(key: string, body: Buffer): Promise<void> {
     await this.internalClient.send(
       new PutObjectCommand({

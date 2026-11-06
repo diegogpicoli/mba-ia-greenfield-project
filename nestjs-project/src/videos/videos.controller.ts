@@ -1,7 +1,8 @@
-import { Body, Controller, Post } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post } from '@nestjs/common';
 import {
   ApiBearerAuth,
   ApiOperation,
+  ApiParam,
   ApiResponse,
   ApiTags,
   getSchemaPath,
@@ -12,6 +13,7 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { ApiErrorEnvelope } from '../common/openapi/api-error-envelope.dto';
 import { CreateVideoDto } from './dto/create-video.dto';
 import { CreatedVideoResponseDto } from './dto/created-video-response.dto';
+import { VideoResponseDto } from './dto/video-response.dto';
 import { VideosService } from './videos.service';
 
 @SkipThrottle()
@@ -52,5 +54,35 @@ export class VideosController {
     @Body() dto: CreateVideoDto,
   ): Promise<CreatedVideoResponseDto> {
     return this.videosService.createDraft(user.sub, dto);
+  }
+
+  @Get(':publicId')
+  @ApiBearerAuth('access-token')
+  @ApiOperation({
+    summary: 'Get a video',
+    description:
+      'Returns the video of the authenticated owner, including its status, so that the client can poll the processing.',
+  })
+  @ApiParam({ name: 'publicId', description: 'Public id of the video' })
+  @ApiResponse({
+    status: 200,
+    description: 'The video resource',
+    type: VideoResponseDto,
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'Missing or invalid access token',
+    schema: { $ref: getSchemaPath(ApiErrorEnvelope) },
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'The video does not exist or belongs to another channel',
+    schema: { $ref: getSchemaPath(ApiErrorEnvelope) },
+  })
+  async findOne(
+    @CurrentUser() user: JwtPayload,
+    @Param('publicId') publicId: string,
+  ): Promise<VideoResponseDto> {
+    return this.videosService.getOwned(publicId, user.sub);
   }
 }

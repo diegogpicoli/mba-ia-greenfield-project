@@ -49,6 +49,12 @@ export class TokenReuseDetectedException extends DomainException {
   }
 }
 
+export class VideoNotFoundException extends DomainException {
+  constructor() {
+    super('VIDEO_NOT_FOUND', 404, 'Video not found');
+  }
+}
+
 export class VideoTooLargeException extends DomainException {
   constructor() {
     super('VIDEO_TOO_LARGE', 413, 'Video exceeds the 10 GiB limit');

@@ -2,9 +2,12 @@ import { Test } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { QueryFailedError } from 'typeorm';
 import { ChannelsService } from '../channels/channels.service';
-import { VideoTooLargeException } from '../common/exceptions/domain.exception';
+import {
+  VideoNotFoundException,
+  VideoTooLargeException,
+} from '../common/exceptions/domain.exception';
 import { StorageService } from '../storage/storage.service';
-import { Video } from './entities/video.entity';
+import { Video, VideoStatus } from './entities/video.entity';
 import { PUBLIC_ID_MAX_ATTEMPTS } from './videos.constants';
 import { VideosService } from './videos.service';
 
@@ -28,9 +31,16 @@ function uniqueViolation(column: string): QueryFailedError {
 
 describe('VideosService', () => {
   let service: VideosService;
-  const videoRepository = { create: jest.fn(), save: jest.fn() };
+  const videoRepository = {
+    create: jest.fn(),
+    save: jest.fn(),
+    findOne: jest.fn(),
+  };
   const channelsService = { findByUserId: jest.fn() };
-  const storageService = { createMultipartUpload: jest.fn() };
+  const storageService = {
+    createMultipartUpload: jest.fn(),
+    getThumbnailUrl: jest.fn(),
+  };
 
   beforeEach(async () => {
     jest.resetAllMocks();
@@ -49,6 +59,84 @@ describe('VideosService', () => {
       ],
     }).compile();
     service = module.get(VideosService);
+  });
+
+  describe('getOwned', () => {
+    const createdAt = new Date('2026-11-06T10:00:00Z');
+    const updatedAt = new Date('2026-11-06T10:05:00Z');
+    const draft = {
+      id: 'internal-id',
+      public_id: 'public-id-1',
+      channel_id: 'channel-id',
+      title: 'aula.mp4',
+      status: VideoStatus.DRAFT,
+      original_filename: 'aula.mp4',
+      declared_size: 20971520,
+      upload_id: 'upload-id',
+      source_key: 'internal-id/source',
+      thumbnail_key: null,
+      duration: null,
+      width: null,
+      height: null,
+      video_codec: null,
+      audio_codec: null,
+      bitrate: null,
+      container: null,
+      created_at: createdAt,
+      updated_at: updatedAt,
+    };
+
+    it('should map a draft to the resource, with null metadata and no internal field', async () => {
+      videoRepository.findOne.mockResolvedValue(draft);
+
+      await expect(service.getOwned('public-id-1', USER_ID)).resolves.toEqual({
+        public_id: 'public-id-1',
+        title: 'aula.mp4',
+        status: VideoStatus.DRAFT,
+        original_filename: 'aula.mp4',
+        declared_size: 20971520,
+        duration: null,
+        width: null,
+        height: null,
+        video_codec: null,
+        audio_codec: null,
+        bitrate: null,
+        container: null,
+        thumbnail_url: null,
+        created_at: createdAt,
+        updated_at: updatedAt,
+      });
+      expect(storageService.getThumbnailUrl).not.toHaveBeenCalled();
+    });
+
+    it('should build the thumbnail_url from the thumbnail key of a ready video', async () => {
+      videoRepository.findOne.mockResolvedValue({
+        ...draft,
+        status: VideoStatus.READY,
+        thumbnail_key: 'internal-id/thumbnail.jpg',
+        duration: 5,
+      });
+      storageService.getThumbnailUrl.mockReturnValue('http://storage/thumb');
+
+      await expect(
+        service.getOwned('public-id-1', USER_ID),
+      ).resolves.toMatchObject({
+        status: VideoStatus.READY,
+        duration: 5,
+        thumbnail_url: 'http://storage/thumb',
+      });
+      expect(storageService.getThumbnailUrl).toHaveBeenCalledWith(
+        'internal-id/thumbnail.jpg',
+      );
+    });
+
+    it('should throw VIDEO_NOT_FOUND when no video matches', async () => {
+      videoRepository.findOne.mockResolvedValue(null);
+
+      await expect(
+        service.getOwned('public-id-1', USER_ID),
+      ).rejects.toBeInstanceOf(VideoNotFoundException);
+    });
   });
 
   describe('size limit', () => {
