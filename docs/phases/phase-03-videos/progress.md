@@ -1,7 +1,7 @@
 # phase-03-videos — Progress
 
 **Status:** in_progress
-**SIs:** 16/18 completed
+**SIs:** 17/18 completed
 
 ### SI-03.1 — Infra: Redis, MinIO e FFmpeg no Compose
 - **Status:** completed
@@ -168,9 +168,17 @@
   - Não provado: o nome com que um navegador salva o arquivo, porque a tela está fora desta fase, e a expiração real da URL, porque os testes não esperam 6h.
 
 ### SI-03.16 — Prova do fluxo completo com infra real
-- **Status:** pending
-- **Tests:** no tests
-- **Observations:** none
+- **Status:** completed
+- **Tests:** 13 passing, em `test/videos-flow.e2e-spec.ts`, com Postgres, Redis, MinIO e o `video-worker` do Compose
+- **Observations:**
+  - `draft` é lido na resposta de `POST /videos`, em um `GET` logo depois dele e em outro depois dos `PUT`.
+  - `processing` é lido na resposta do `complete` e em um `GET` feito com a fila pausada. Com a pausa, feita antes do `complete`, o job espera e o worker não leva o vídeo a `ready` entre duas leituras. A pausa não grava `status`: o `processing` é o que a API grava.
+  - `ready` é lido no polling depois de despausar a fila, gravado pelo `video-worker`.
+  - O vídeo tem cerca de 24 MiB, em duas partes. A leitura integral e um `Range` que atravessa o limite entre as duas partes devolvem exatamente os bytes enviados.
+  - `queue.getWorkers()` conta a conexão bloqueante de cada worker e não inclui a do `QueueEvents`, então um `video-worker` conta como 1.
+  - Pelo host, nas URLs de `localhost:9000`: thumbnail `200` com `image/jpeg`, listagem do bucket `403`, stream com `Range` `206`, stream sem assinatura `403`, e download com `Content-Disposition: attachment` e o mesmo SHA-256 do arquivo.
+  - Um arquivo de texto termina em `error` com uma tentativa só, conforme a SI-03.8, e o original continua legível no storage.
+  - Não provado: reprodução em um navegador real, e o fluxo com mais de um `video-worker`. No arquivo inválido, a passagem por `processing` não é verificada, porque a fila não é pausada nesse caso.
 
 ### SI-03.17 — Documentação e contrato OpenAPI
 - **Status:** pending

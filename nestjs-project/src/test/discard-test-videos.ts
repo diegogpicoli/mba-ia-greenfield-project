@@ -30,7 +30,7 @@ export async function waitForIdleQueue(queue: Queue): Promise<void> {
     }
     if (Date.now() > deadline) {
       throw new Error(
-        `${pending} job(s) still pending in ${queue.name}. Is the video-worker service running?`,
+        `${pending} job(s) still pending in ${queue.name}. Is the video-worker service running, and the queue not paused?`,
       );
     }
     await sleep(QUEUE_IDLE_POLL_MS);
