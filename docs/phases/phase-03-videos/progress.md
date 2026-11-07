@@ -1,7 +1,7 @@
 # phase-03-videos — Progress
 
 **Status:** in_progress
-**SIs:** 15/18 completed
+**SIs:** 16/18 completed
 
 ### SI-03.1 — Infra: Redis, MinIO e FFmpeg no Compose
 - **Status:** completed
@@ -157,9 +157,15 @@
   - Não provado: a expiração real da URL, porque os testes conferem `expires_at` e `X-Amz-Expires` sem esperar 6h, e o `403` do storage depois de expirar.
 
 ### SI-03.15 — Endpoint GET /videos/{publicId}/download
-- **Status:** pending
-- **Tests:** no tests
-- **Observations:** none
+- **Status:** completed
+- **Tests:** 94 passing (5 do e2e da spec, 4 do e2e de `videos-stream`, 15 de `content-disposition.util` e 70 de `VideosService`, sendo 48 unitários e 22 de integração)
+- **Observations:**
+  - O header tem sempre os dois parâmetros, por exemplo `attachment; filename="a__o.mp4"; filename*=UTF-8''a%C3%A7%C3%A3o.mp4`. Em `filename`, tudo fora de ASCII imprimível, aspas, barra invertida, ponto e vírgula e `%` vira `_`. O `%` sai porque há clientes que decodificam `%XX` nesse parâmetro.
+  - O `filename*` preserva o nome inteiro, inclusive uma quebra de linha, que vai como `%0A` e não chega ao header. Tratar esse caractere ao gravar o arquivo fica a cargo do cliente.
+  - Um nome com o tamanho máximo de `POST /videos`, 251 caracteres de 3 bytes em UTF-8 mais a extensão, atravessa a URL assinada e volta intacto no header do MinIO.
+  - Um surrogate solto em `original_filename` é aceito pela validação e vira `U+FFFD` ao gravar no Postgres, então `encodeURIComponent` não lança erro no download.
+  - A exigência de `ready` foi para `findOwnedReady`, usado por `getStreamUrl` e `getDownloadUrl`, sem mudar o comportamento de `getStreamUrl`.
+  - Não provado: o nome com que um navegador salva o arquivo, porque a tela está fora desta fase, e a expiração real da URL, porque os testes não esperam 6h.
 
 ### SI-03.16 — Prova do fluxo completo com infra real
 - **Status:** pending

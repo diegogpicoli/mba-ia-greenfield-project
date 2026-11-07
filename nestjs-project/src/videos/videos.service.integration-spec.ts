@@ -30,6 +30,7 @@ import {
 import { generateTestVideo } from '../test/generate-test-video';
 import { presignedRequest } from '../test/presigned-request';
 import { User } from '../users/entities/user.entity';
+import { attachmentDisposition } from './content-disposition.util';
 import { Video, VideoStatus } from './entities/video.entity';
 import { PROCESS_VIDEO_JOB, VIDEO_PROCESSING_QUEUE } from './videos.constants';
 import { VideosService } from './videos.service';
@@ -70,12 +71,14 @@ describe('VideosService (integration)', () => {
   async function sendDraft(
     userId: string,
     chunks: Buffer[],
+    originalFilename = DTO.original_filename,
   ): Promise<{
     publicId: string;
     parts: { part_number: number; etag: string }[];
   }> {
     const { public_id: publicId } = await service.createDraft(userId, {
       ...DTO,
+      original_filename: originalFilename,
       declared_size: chunks.reduce((total, { length }) => total + length, 0),
     });
     const signed = await service.signParts(publicId, userId, {
@@ -434,6 +437,40 @@ describe('VideosService (integration)', () => {
       expect(read.headers['content-type']).toBe(DTO.content_type);
       expect(read.body.equals(content.subarray(1024, 1536))).toBe(true);
     });
+  });
+
+  describe('getDownloadUrl', () => {
+    it.each([
+      ['plain', 'aula.mp4'],
+      ['with quotes, line break, accents and semicolon', 'a "ção"\r\n;b.mp4'],
+      ['with the longest name the API accepts', '語'.repeat(251) + '.mp4'],
+    ])(
+      'should give a URL that the real MinIO answers with the header, for a name %s',
+      async (_case, originalFilename) => {
+        const { user } = await createUserWithChannel();
+        const content = randomBytes(1024);
+        const { publicId, parts } = await sendDraft(
+          user.id,
+          [content],
+          originalFilename,
+        );
+        jest.spyOn(queue, 'add').mockResolvedValue({} as Job);
+        await service.complete(publicId, user.id, { parts });
+        await videoRepository.update(
+          { public_id: publicId },
+          { status: VideoStatus.READY },
+        );
+
+        const { url } = await service.getDownloadUrl(publicId, user.id);
+
+        const read = await presignedRequest(url);
+        expect(read.status).toBe(200);
+        expect(read.headers['content-disposition']).toBe(
+          attachmentDisposition(originalFilename),
+        );
+        expect(read.body.equals(content)).toBe(true);
+      },
+    );
   });
 
   describe('findOwned', () => {

@@ -16,6 +16,7 @@ import {
   VideoUploadClosedException,
 } from '../common/exceptions/domain.exception';
 import { StorageService } from '../storage/storage.service';
+import { attachmentDisposition } from './content-disposition.util';
 import type {
   CompletedPartDto,
   CompleteVideoDto,
@@ -190,14 +191,34 @@ export class VideosService {
     publicId: string,
     userId: string,
   ): Promise<VideoUrlResponseDto> {
-    const video = await this.findOwned(publicId, userId);
-    if (video.status !== VideoStatus.READY) {
-      throw new VideoNotReadyException();
-    }
+    const video = await this.findOwnedReady(publicId, userId);
     const { url, expiresAt } = await this.storageService.signClientRead(
       video.source_key,
     );
     return { url, expires_at: expiresAt };
+  }
+
+  async getDownloadUrl(
+    publicId: string,
+    userId: string,
+  ): Promise<VideoUrlResponseDto> {
+    const video = await this.findOwnedReady(publicId, userId);
+    const { url, expiresAt } = await this.storageService.signClientRead(
+      video.source_key,
+      attachmentDisposition(video.original_filename),
+    );
+    return { url, expires_at: expiresAt };
+  }
+
+  private async findOwnedReady(
+    publicId: string,
+    userId: string,
+  ): Promise<Video> {
+    const video = await this.findOwned(publicId, userId);
+    if (video.status !== VideoStatus.READY) {
+      throw new VideoNotReadyException();
+    }
+    return video;
   }
 
   private async findOwnedDraft(

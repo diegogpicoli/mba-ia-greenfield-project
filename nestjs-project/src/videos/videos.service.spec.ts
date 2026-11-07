@@ -587,6 +587,47 @@ describe('VideosService', () => {
     });
   });
 
+  describe('getDownloadUrl', () => {
+    const ready = {
+      status: VideoStatus.READY,
+      source_key: 'internal-id/source',
+      original_filename: 'ação.mp4',
+    };
+
+    it.each([VideoStatus.DRAFT, VideoStatus.PROCESSING, VideoStatus.ERROR])(
+      'should refuse a video in %s, without signing',
+      async (status) => {
+        videoRepository.findOne.mockResolvedValue({ ...ready, status });
+
+        await expect(
+          service.getDownloadUrl('public-id', USER_ID),
+        ).rejects.toBeInstanceOf(VideoNotReadyException);
+
+        expect(storageService.signClientRead).not.toHaveBeenCalled();
+      },
+    );
+
+    it('should sign the read of the source with the original name as an attachment', async () => {
+      const expiresAt = new Date('2026-11-06T16:00:00Z');
+      videoRepository.findOne.mockResolvedValue(ready);
+      storageService.signClientRead.mockResolvedValue({
+        url: 'http://storage/source',
+        expiresAt,
+      });
+
+      await expect(
+        service.getDownloadUrl('public-id', USER_ID),
+      ).resolves.toEqual({
+        url: 'http://storage/source',
+        expires_at: expiresAt,
+      });
+      expect(storageService.signClientRead).toHaveBeenCalledWith(
+        'internal-id/source',
+        `attachment; filename="a__o.mp4"; filename*=UTF-8''a%C3%A7%C3%A3o.mp4`,
+      );
+    });
+  });
+
   describe('size limit', () => {
     it('should reject one byte above 10 GiB before opening the multipart', async () => {
       await expect(

@@ -259,4 +259,39 @@ export class VideosController {
   ): Promise<VideoUrlResponseDto> {
     return this.videosService.getStreamUrl(publicId, user.sub);
   }
+
+  @Get(':publicId/download')
+  @ApiBearerAuth('access-token')
+  @ApiOperation({
+    summary: 'Get the URL to download a video',
+    description:
+      'Returns a presigned URL, valid for 6 hours, whose response carries a Content-Disposition with the original file name.',
+  })
+  @ApiParam({ name: 'publicId', description: 'Public id of the video' })
+  @ApiResponse({
+    status: 200,
+    description: 'The presigned URL and its expiration',
+    type: VideoUrlResponseDto,
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'Missing or invalid access token',
+    schema: { $ref: getSchemaPath(ApiErrorEnvelope) },
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'The video does not exist or belongs to another channel',
+    schema: { $ref: getSchemaPath(ApiErrorEnvelope) },
+  })
+  @ApiResponse({
+    status: 409,
+    description: 'The video is not ready',
+    schema: { $ref: getSchemaPath(ApiErrorEnvelope) },
+  })
+  async getDownloadUrl(
+    @CurrentUser() user: JwtPayload,
+    @Param('publicId') publicId: string,
+  ): Promise<VideoUrlResponseDto> {
+    return this.videosService.getDownloadUrl(publicId, user.sub);
+  }
 }
