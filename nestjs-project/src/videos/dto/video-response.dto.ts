@@ -14,16 +14,16 @@ export class VideoResponseDto {
   @ApiProperty({ example: 'aula.mp4' })
   original_filename: string;
 
-  @ApiProperty({ example: 20971520 })
+  @ApiProperty({ type: 'integer', example: 20971520 })
   declared_size: number;
 
   @ApiProperty({ type: Number, nullable: true, example: 5 })
   duration: number | null;
 
-  @ApiProperty({ type: Number, nullable: true, example: 640 })
+  @ApiProperty({ type: 'integer', nullable: true, example: 640 })
   width: number | null;
 
-  @ApiProperty({ type: Number, nullable: true, example: 360 })
+  @ApiProperty({ type: 'integer', nullable: true, example: 360 })
   height: number | null;
 
   @ApiProperty({ type: String, nullable: true, example: 'h264' })
@@ -32,7 +32,7 @@ export class VideoResponseDto {
   @ApiProperty({ type: String, nullable: true, example: 'aac' })
   audio_codec: string | null;
 
-  @ApiProperty({ type: Number, nullable: true, example: 129400 })
+  @ApiProperty({ type: 'integer', nullable: true, example: 129400 })
   bitrate: number | null;
 
   @ApiProperty({

@@ -1,7 +1,7 @@
 import { ApiProperty } from '@nestjs/swagger';
 
 export class SignedPartDto {
-  @ApiProperty({ example: 1 })
+  @ApiProperty({ type: 'integer', example: 1 })
   part_number: number;
 
   @ApiProperty({ format: 'uri' })

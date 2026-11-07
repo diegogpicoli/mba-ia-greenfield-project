@@ -13,8 +13,12 @@ docker compose ps   # all services must show status "running"
 Then verify each infrastructure service is actually ready to accept connections — not just running:
 
 - **PostgreSQL:** `docker compose exec db pg_isready -U streamtube` — expect `accepting connections`
+- **Redis:** `docker compose exec redis redis-cli ping` — expect `PONG`
+- **MinIO:** `docker compose exec minio curl -f http://localhost:9000/minio/health/live` — expect exit code 0
 
 Only start the NestJS dev server (`npm run start:dev`) when the user **explicitly** asks to run the application — never as part of "start the environment".
+
+The `video-worker` service is different: it has no manual start, and its process runs as soon as `docker compose up` brings the container up.
 
 ## Development Environment
 
@@ -34,6 +38,10 @@ docker compose exec nestjs-api npm run start:dev
 Services:
 - `nestjs-api` — NestJS API, port `3000`
 - `db` — PostgreSQL 17, port `5432`, database `streamtube`, user/password `streamtube`
+- `mailpit` — development SMTP server, port `1025`, web interface on port `8025`
+- `redis` — Redis 8.8, the BullMQ backend, reachable only by service name inside the Compose network
+- `minio` — S3-compatible object storage built from source (`docker/minio/Dockerfile`), port `9000`, user/password `streamtube`
+- `video-worker` — consumes the video processing queue and runs FFmpeg; starts by itself and restarts unless stopped
 
 All verification and teardown commands run on the **host machine**:
 
@@ -71,6 +79,7 @@ npm run test:e2e                         # End-to-end tests (always with --runIn
 npx tsc --noEmit                         # Type-check (required before declaring a task done)
 npm run lint                             # ESLint with auto-fix
 npm run format                           # Prettier formatting
+npm run openapi:export                   # Regenerates openapi.json; needs the db service, and exits 1 with no message when it is down
 ```
 
 ### Host-only commands (Docker / connectivity probes)
@@ -78,6 +87,8 @@ npm run format                           # Prettier formatting
 ```bash
 docker compose ps
 docker compose logs nestjs-api
+docker compose logs video-worker
+docker compose restart video-worker
 docker compose exec db pg_isready -U streamtube
 curl http://localhost:3000
 ```
@@ -148,6 +159,31 @@ NestJS with standard module structure. Source lives in `src/`, compiled output i
 
 - Each domain feature gets its own module (e.g., `UsersModule`, `VideosModule`) registered in `AppModule`
 - Controllers handle HTTP routing; Services hold business logic; both are scoped to their module
+
+## Videos
+
+`VideosModule` (`src/videos/`) serves the HTTP endpoints for upload, streaming and download. The processing code lives in the same directory, but its providers are registered in `WorkerModule` (`src/worker.module.ts`), so it only runs in the worker. `StorageModule` (`src/storage/`) wraps the S3 API used against MinIO.
+
+Video bytes never pass through the API. The client sends them to MinIO and reads them from MinIO through presigned URLs, and the API only signs those URLs and records the state. This is what allows files of up to 10 GiB (`VIDEO_MAX_SIZE_BYTES`) without holding the API.
+
+| Endpoint                            | Purpose                                                                 |
+|-------------------------------------|-------------------------------------------------------------------------|
+| `POST /videos`                      | Creates the video as `draft` with a unique `public_id` and opens the multipart upload, in 16 MiB parts |
+| `GET /videos/:publicId`             | Returns the video                                                       |
+| `POST /videos/:publicId/parts/sign` | Returns presigned URLs for the requested parts                          |
+| `GET /videos/:publicId/parts`       | Returns the upload progress, read from the storage                      |
+| `POST /videos/:publicId/complete`   | Verifies the parts, closes the upload and enqueues the processing       |
+| `GET /videos/:publicId/stream`      | Returns a presigned URL that answers `Range` requests                   |
+| `GET /videos/:publicId/download`    | Returns a presigned URL that answers with `Content-Disposition: attachment` |
+
+All of them require authentication, and a video from another user answers `404`.
+
+- **Status:** `draft` → `processing` → `ready` or `error`. The `complete` endpoint writes `processing`; the worker writes `ready`, with duration, dimensions and thumbnail. A file FFmpeg rejects ends in `error` after one attempt. Other failures are retried up to three attempts (`PROCESS_VIDEO_JOB_OPTIONS`), and a job whose worker dies twice fails through BullMQ's stalled limit. In `error`, the original stays in the storage.
+- **Queue:** BullMQ on Redis, queue `video-processing`, job `process-video`, with the video id as `jobId`.
+- **Worker:** same codebase, own container. `src/worker.ts` starts `WorkerModule`, and `npm run start:worker` compiles it with `tsconfig.worker.json` into `dist-worker/`. FFmpeg reads the original through a presigned URL.
+- **Changing worker code:** `start:worker` does not watch files, so any change to code the worker loads only takes effect after `docker compose restart video-worker`.
+- **Storage:** bucket `streamtube-videos` is private; bucket `streamtube-thumbnails` allows anonymous reads of an object, but not listing. `S3_ENDPOINT` is the address the containers use, and `S3_PUBLIC_ENDPOINT` is the one in the URLs handed to clients.
+- **Tests:** integration and e2e suites use the real `redis`, `minio` and `video-worker` from Compose, so those services must be up. A test that enqueues a job waits for the real worker, a test of the processor calls its method directly, and no test starts a second consumer.
 
 ## Code Conventions
 

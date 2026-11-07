@@ -1,7 +1,7 @@
 # phase-03-videos — Progress
 
-**Status:** in_progress
-**SIs:** 17/18 completed
+**Status:** completed
+**SIs:** 18/18 completed
 
 ### SI-03.1 — Infra: Redis, MinIO e FFmpeg no Compose
 - **Status:** completed
@@ -181,9 +181,18 @@
   - Não provado: reprodução em um navegador real, e o fluxo com mais de um `video-worker`. No arquivo inválido, a passagem por `processing` não é verificada, porque a fila não é pausada nesse caso.
 
 ### SI-03.17 — Documentação e contrato OpenAPI
-- **Status:** pending
-- **Tests:** no tests
-- **Observations:** none
+- **Status:** completed
+- **Tests:** no tests na SI. Suíte completa da fase: 342 passing em 37 suítes (`npm test -- --runInBand`) e 105 passing em 11 suítes (`npm run test:e2e`)
+- **Observations:**
+  - `openapi.json` ganhou 786 linhas e não perdeu nenhuma, então o que já existia de `auth` não mudou. Traz os sete endpoints de vídeos, cada um com as respostas de erro de `### API Contracts`, todas apontando para `ApiErrorEnvelope`. Os códigos do catálogo, como `VIDEO_NOT_FOUND`, não aparecem no arquivo: cada resposta tem o status e uma descrição.
+  - Os DTOs de resposta saíam com `number` onde o contrato pede `integer`: `declared_size`, `part_size`, `part_count`, `part_number`, `missing_part_numbers`, `width`, `height` e `bitrate`. Agora declaram `type: 'integer'`. `duration` segue `number`, como no contrato.
+  - **Mudança fora das ações da SI, per `phase-03-videos/TD-02`:** no `software-arch.mermaid`, `Rel(api, storage, "Uploads")` contradizia o upload direto ao storage. As relações agora são `Rel(frontend, storage, "Uploads and streams", "Presigned URLs")` e `Rel(api, storage, "Manages uploads", "S3 API")`. Os deslocamentos dos dois rótulos mudaram para eles não cobrirem outros textos. O arquivo renderiza no Mermaid 11.4.1, sem textos sobrepostos.
+  - `openapi:export` só precisa do `db`, medido com os demais serviços parados por rodada. Com `redis`, ou com `minio` e `mailpit`, fora do ar, o comando sai com 0 e grava o mesmo arquivo. Com o `db` fora do ar, sai com 1, sem nenhuma mensagem e sem gravar. O comando levou de 95 s a 4 min.
+  - Parar `redis`, `minio` ou `db` não reiniciou o `video-worker`: o `RestartCount` ficou em 0, a conexão bloqueante voltou, e os e2e seguintes passaram com ele.
+  - Limite conhecido: os corpos de request não têm campos no `openapi.json`. `openapi:export` roda com `ts-node`, que não aplica o plugin do `nest-cli.json`, então nove schemas saem sem `properties`: `CreateVideoDto`, `SignPartsDto`, `CompleteVideoDto` e os seis de `auth`. `CompletedPartDto` nem aparece. O comportamento já existia nos schemas de `auth`, antes desta fase. Exportando de um build feito com a CLI do Nest, os nove saem preenchidos e o `integer` das respostas se mantém, mas `declared_size`, `part_numbers` e `part_number` continuam `number`, porque o plugin não traduz `@IsInt`, e `@ArrayMaxSize(VIDEO_MAX_PART_COUNT)` não vira `maxItems`.
+  - `npm run lint` roda com `--fix`. A verificação usou o mesmo glob sem `--fix`: 0 erros e 1 aviso, em `src/auth/auth.service.integration-spec.ts:472`, arquivo que esta SI não altera.
+  - `npm run build` sai com 0, em 89 s. Os helpers de `src/test/` entram no `dist/`, em 15 arquivos, porque `tsconfig.build.json` só exclui a pasta `test` da raiz.
+  - Não provado: a aplicação subindo a partir do `dist/`, e a geração de tipos do `next-frontend` a partir do novo `openapi.json`.
 
 ### SI-03.18 (amendment of SI-03.5) — `env_file` no `video-worker` e `start:worker` sem `--watch`
 - **Status:** completed
