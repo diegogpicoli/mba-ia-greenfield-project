@@ -178,6 +178,13 @@
   - `queue.getWorkers()` conta a conexão bloqueante de cada worker e não inclui a do `QueueEvents`, então um `video-worker` conta como 1.
   - Pelo host, nas URLs de `localhost:9000`: thumbnail `200` com `image/jpeg`, listagem do bucket `403`, stream com `Range` `206`, stream sem assinatura `403`, e download com `Content-Disposition: attachment` e o mesmo SHA-256 do arquivo.
   - Um arquivo de texto termina em `error` com uma tentativa só, conforme a SI-03.8, e o original continua legível no storage.
+  - Prova com arquivo real no limite de 10 GiB, feita uma vez e fora da suíte, porque o arquivo não cabe num teste:
+    - Arquivo: MP4 H.264 e AAC de 1.276,8 s, com exatamente 10.737.418.240 bytes, gerado com `ffmpeg` dentro do container. O cliente enviou as 640 partes de 16 MiB direto ao MinIO, 4 por vez, com a API rodando compilada (`node dist/main`).
+    - API durante o envio: o envio levou 105,6 s, e 416 leituras de `GET /videos/{publicId}` responderam todas `200`, com p50 de 3,4 ms, p95 de 5,8 ms e máximo de 44,8 ms. Antes do envio, p50 de 4 ms e p95 de 5,9 ms. A memória do processo da API ficou entre 182 e 209 MiB.
+    - Na metade do envio, `GET /videos/{publicId}/parts` mostrou 320 partes no storage e 320 faltando.
+    - O `complete` respondeu em 301 ms, e o vídeo passou por `draft`, `processing` e `ready`, com cerca de 1 s de processamento, duração de 1.276,785 s e 640x360.
+    - `Range` no meio do arquivo e no último KiB: `206`, com os mesmos bytes do arquivo. Download: os 10.737.418.240 bytes, com o mesmo SHA-256 e `Content-Disposition: attachment`. Thumbnail sem assinatura: `200` com `image/jpeg`.
+    - Limite da medição: as leituras e o envio rodaram no mesmo processo Node, dentro da rede do Compose, então a latência medida inclui a disputa do próprio cliente.
   - Não provado: reprodução em um navegador real, e o fluxo com mais de um `video-worker`. No arquivo inválido, a passagem por `processing` não é verificada, porque a fila não é pausada nesse caso.
 
 ### SI-03.17 — Documentação e contrato OpenAPI
