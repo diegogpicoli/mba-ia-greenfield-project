@@ -8,8 +8,9 @@ import {
 import { User } from '../users/entities/user.entity';
 import { ChannelsService } from './channels.service';
 import { Channel } from './entities/channel.entity';
+import { Video } from '../videos/entities/video.entity';
 
-const ALL_ENTITIES = [User, Channel, RefreshToken, VerificationToken];
+const ALL_ENTITIES = [User, Channel, RefreshToken, VerificationToken, Video];
 
 describe('ChannelsService (integration)', () => {
   let dataSource: DataSource;
@@ -42,6 +43,27 @@ describe('ChannelsService (integration)', () => {
       }),
     );
   }
+
+  describe('findByUserId', () => {
+    it('returns the channel of the user', async () => {
+      const user = await createUser();
+      await createUser();
+      const created = await channelsService.createChannel(
+        user.id,
+        'findme@example.com',
+      );
+
+      const channel = await channelsService.findByUserId(user.id);
+
+      expect(channel.id).toBe(created.id);
+    });
+
+    it('rejects when the user has no channel', async () => {
+      const user = await createUser();
+
+      await expect(channelsService.findByUserId(user.id)).rejects.toThrow();
+    });
+  });
 
   describe('createChannel', () => {
     it('persists a channel derived from email', async () => {

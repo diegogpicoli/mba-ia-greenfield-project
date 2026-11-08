@@ -12,6 +12,31 @@ services:
         condition: service_healthy
       mailpit:
         condition: service_started
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+
+  video-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    command: sh -c "npm install && exec npm run start:worker"
+    restart: unless-stopped
+    env_file:
+      - path: .env.example
+      - path: .env
+        required: false
+    volumes:
+      - .:/home/node/app
+      - video-worker-node-modules:/home/node/app/node_modules
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
 
   db:
     image: postgres:17
@@ -33,4 +58,35 @@ services:
       - "1025:1025"
       - "8025:8025"
 
+  redis:
+    image: redis:8.8
+    command: ["redis-server", "--maxmemory-policy", "noeviction", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli ping | grep -q PONG"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
+  minio:
+    build:
+      context: ./docker/minio
+    ports:
+      - "9000:9000"
+    environment:
+      - MINIO_ROOT_USER=streamtube
+      - MINIO_ROOT_PASSWORD=streamtube
+      - MINIO_API_STALE_UPLOADS_EXPIRY=168h
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  redis-data:
+  minio-data:
+  video-worker-node-modules:

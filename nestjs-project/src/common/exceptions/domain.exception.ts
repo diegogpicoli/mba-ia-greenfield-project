@@ -48,3 +48,49 @@ export class TokenReuseDetectedException extends DomainException {
     );
   }
 }
+
+export class VideoNotFoundException extends DomainException {
+  constructor() {
+    super('VIDEO_NOT_FOUND', 404, 'Video not found');
+  }
+}
+
+export class VideoTooLargeException extends DomainException {
+  constructor() {
+    super('VIDEO_TOO_LARGE', 413, 'Video exceeds the 10 GiB limit');
+  }
+}
+
+export class VideoUploadClosedException extends DomainException {
+  constructor() {
+    super('VIDEO_UPLOAD_CLOSED', 409, 'Video upload is already closed');
+  }
+}
+
+export class VideoNotReadyException extends DomainException {
+  constructor() {
+    super('VIDEO_NOT_READY', 409, 'Video is not ready');
+  }
+}
+
+export class UploadPartOutOfRangeException extends DomainException {
+  constructor() {
+    super('UPLOAD_PART_OUT_OF_RANGE', 400, 'Part number is out of range');
+  }
+}
+
+export class UploadPartsMismatchException extends DomainException {
+  constructor() {
+    super(
+      'UPLOAD_PARTS_MISMATCH',
+      409,
+      'Uploaded parts do not match the declared file',
+    );
+  }
+}
+
+export class UploadNotFoundException extends DomainException {
+  constructor() {
+    super('UPLOAD_NOT_FOUND', 409, 'Multipart upload not found');
+  }
+}
